@@ -58,6 +58,7 @@ CREATE TABLE public.sys_dept
     owner_user_group_id int8                                                   NULL,
     CONSTRAINT sys_dept_pkey PRIMARY KEY (id)
 );
+CREATE UNIQUE INDEX sys_dept_tenant_name_un ON public.sys_dept USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_dept IS '部门表';
 
 -- Column comments
@@ -209,10 +210,10 @@ CREATE TABLE public.sys_role
     data_scope    int2         DEFAULT 1                                 NOT NULL,
     scope_dept_id int8                                                   NULL,
     remark        varchar(512)                                           NULL,
-    CONSTRAINT sys_role_pkey PRIMARY KEY (id),
-    CONSTRAINT sys_role_tenant_code_un UNIQUE (tenant_id, code),
-    CONSTRAINT sys_role_tenant_name_un UNIQUE (tenant_id, name)
+    CONSTRAINT sys_role_pkey PRIMARY KEY (id)
 );
+CREATE UNIQUE INDEX sys_role_tenant_code_un ON public.sys_role USING btree (tenant_id, code) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX sys_role_tenant_name_un ON public.sys_role USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_role IS '角色表';
 
 -- Column comments
@@ -254,6 +255,7 @@ CREATE TABLE public.sys_role_id_scope
     tenant_id  varchar(16)                                            NOT NULL,
     CONSTRAINT sys_sys_role_id_scope_pkey PRIMARY KEY (id)
 );
+CREATE UNIQUE INDEX sys_role_id_scope_tenant_role_type_data_un ON public.sys_role_id_scope USING btree (tenant_id, role_id, type, data_id) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_role_id_scope IS '角色数据 ID 范围表';
 
 -- Column comments
@@ -324,7 +326,7 @@ CREATE TABLE public.sys_user
     updated_by          int8                                                   NOT NULL,
     updated_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at          timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
-    tenant_id           varchar(16)                                            NULL,
+    tenant_id           varchar(16)                                            NOT NULL,
     owner_user_id       int8                                                   NULL,
     owner_dept_id       int8                                                   NULL,
     owner_user_group_id int8                                                   NULL,
@@ -334,7 +336,7 @@ CREATE TABLE public.sys_user
     remark              varchar                                                NULL,
     CONSTRAINT sys_user_pkey PRIMARY KEY (id)
 );
-CREATE UNIQUE INDEX sys_user_username_idx ON public.sys_user USING btree (name);
+CREATE UNIQUE INDEX sys_user_tenant_name_un ON public.sys_user USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_user IS '用户表';
 
 -- Column comments
@@ -364,15 +366,18 @@ COMMENT ON COLUMN public.sys_user.remark IS '备注';
 
 CREATE TABLE public.user_role_mapping
 (
-    user_id int8 NOT NULL,
-    role_id int8 NOT NULL,
+    user_id   int8        NOT NULL,
+    role_id   int8        NOT NULL,
+    tenant_id varchar(16) NOT NULL,
     CONSTRAINT user_role_mapping_pk PRIMARY KEY (user_id, role_id)
 );
+CREATE INDEX idx_urm_tenant ON public.user_role_mapping USING btree (tenant_id);
 
 -- Column comments
 
 COMMENT ON COLUMN public.user_role_mapping.user_id IS '用户 ID';
 COMMENT ON COLUMN public.user_role_mapping.role_id IS '角色 ID';
+COMMENT ON COLUMN public.user_role_mapping.tenant_id IS '租户 ID';
 
 
 -- public.sys_user_group 定义
@@ -395,10 +400,10 @@ CREATE TABLE public.sys_user_group
     code          varchar(64)                                            NOT NULL,
     owner_user_id int8                                                   NULL,
     remark        varchar(512)                                           NULL,
-    CONSTRAINT sys_user_group_pkey PRIMARY KEY (id),
-    CONSTRAINT sys_user_group_tenant_code_un UNIQUE (tenant_id, code),
-    CONSTRAINT sys_user_group_tenant_name_un UNIQUE (tenant_id, name)
+    CONSTRAINT sys_user_group_pkey PRIMARY KEY (id)
 );
+CREATE UNIQUE INDEX sys_user_group_tenant_code_un ON public.sys_user_group USING btree (tenant_id, code) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX sys_user_group_tenant_name_un ON public.sys_user_group USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_user_group IS '用户组表';
 
 -- Column comments
@@ -425,12 +430,15 @@ COMMENT ON COLUMN public.sys_user_group.remark IS '备注';
 
 CREATE TABLE public.sys_user_group_mapping
 (
-    group_id int8 NOT NULL,
-    user_id  int8 NOT NULL,
+    group_id  int8        NOT NULL,
+    user_id   int8        NOT NULL,
+    tenant_id varchar(16) NOT NULL,
     CONSTRAINT sys_user_group_mapping_pk PRIMARY KEY (group_id, user_id)
 );
+CREATE INDEX idx_sugm_tenant ON public.sys_user_group_mapping USING btree (tenant_id);
 
 -- Column comments
 
 COMMENT ON COLUMN public.sys_user_group_mapping.group_id IS '用户组 ID';
 COMMENT ON COLUMN public.sys_user_group_mapping.user_id IS '用户 ID';
+COMMENT ON COLUMN public.sys_user_group_mapping.tenant_id IS '租户 ID';
