@@ -281,17 +281,21 @@ COMMENT ON COLUMN public.sys_role_id_scope.tenant_id IS '租户 ID';
 
 CREATE TABLE public.sys_tenant
 (
-    id         varchar(16)                                            NOT NULL,
-    status     int2         DEFAULT 1                                 NOT NULL,
-    code       varchar(32)                                            NOT NULL,
-    "name"     varchar(256)                                           NOT NULL,
-    parent_id  varchar(16)                                            NULL,
-    created_by int8                                                   NOT NULL,
-    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
-    updated_by int8                                                   NOT NULL,
-    updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
-    deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
-    tenant_id  varchar(16)                                            NOT NULL,
+    id             varchar(16)                                            NOT NULL,
+    status         int2         DEFAULT 1                                 NOT NULL,
+    code           varchar(32)                                            NOT NULL,
+    "name"         varchar(256)                                           NOT NULL,
+    parent_id      varchar(16)                                            NULL,
+    contact_name   varchar(64)                                            NULL,
+    contact_phone  varchar(32)                                            NULL,
+    expired_at     timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    max_user_count int4                                                   NULL,
+    created_by     int8                                                   NOT NULL,
+    created_at     timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    updated_by     int8                                                   NOT NULL,
+    updated_at     timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_at     timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    tenant_id      varchar(16)                                            NOT NULL,
     CONSTRAINT sys_tenant_name_un UNIQUE (name),
     CONSTRAINT sys_tenant_pk PRIMARY KEY (id),
     CONSTRAINT sys_tenant_un UNIQUE (code)
@@ -305,6 +309,10 @@ COMMENT ON COLUMN public.sys_tenant.status IS '数据状态，0：禁用、1：�
 COMMENT ON COLUMN public.sys_tenant.code IS '租户编码';
 COMMENT ON COLUMN public.sys_tenant."name" IS '租户名';
 COMMENT ON COLUMN public.sys_tenant.parent_id IS '父级租户 ID';
+COMMENT ON COLUMN public.sys_tenant.contact_name IS '联系人';
+COMMENT ON COLUMN public.sys_tenant.contact_phone IS '联系电话';
+COMMENT ON COLUMN public.sys_tenant.expired_at IS '到期时间';
+COMMENT ON COLUMN public.sys_tenant.max_user_count IS '最大用户数';
 COMMENT ON COLUMN public.sys_tenant.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_tenant.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_tenant.updated_by IS '更新人';
@@ -326,7 +334,10 @@ CREATE TABLE public.sys_user
     "name"              varchar(256)                                           NOT NULL,
     nickname            varchar(256)                                           NOT NULL,
     "password"          text                                                   NOT NULL,
-    remark              varchar                                                NULL,
+    email               varchar(256)                                           NULL,
+    phone               varchar(32)                                            NULL,
+    remark              varchar(512)                                           NULL,
+    last_login_at       timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     created_by          int8                                                   NOT NULL,
     created_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by          int8                                                   NOT NULL,
@@ -339,6 +350,8 @@ CREATE TABLE public.sys_user
     CONSTRAINT sys_user_pkey PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX sys_user_tenant_name_un ON public.sys_user USING btree (tenant_id, name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX sys_user_tenant_email_un ON public.sys_user USING btree (tenant_id, email) WHERE deleted_at IS NULL AND email IS NOT NULL;
+CREATE UNIQUE INDEX sys_user_tenant_phone_un ON public.sys_user USING btree (tenant_id, phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
 COMMENT ON TABLE public.sys_user IS '用户表';
 
 -- Column comments
@@ -348,6 +361,9 @@ COMMENT ON COLUMN public.sys_user.status IS '数据状态，0：禁用、1：启
 COMMENT ON COLUMN public.sys_user."name" IS '用户名';
 COMMENT ON COLUMN public.sys_user.nickname IS '昵称';
 COMMENT ON COLUMN public.sys_user."password" IS '密码';
+COMMENT ON COLUMN public.sys_user.email IS '邮箱';
+COMMENT ON COLUMN public.sys_user.phone IS '手机号';
+COMMENT ON COLUMN public.sys_user.last_login_at IS '最后登录时间';
 COMMENT ON COLUMN public.sys_user.remark IS '备注';
 COMMENT ON COLUMN public.sys_user.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_user.created_at IS '创建时间';
@@ -446,6 +462,90 @@ COMMENT ON COLUMN public.sys_user_group_mapping.user_id IS '用户 ID';
 COMMENT ON COLUMN public.sys_user_group_mapping.tenant_id IS '租户 ID';
 
 
+-- public.sys_dict_type 定义
+
+-- Drop table
+
+-- DROP TABLE public.sys_dict_type;
+
+CREATE TABLE public.sys_dict_type
+(
+    id         int8                                                   NOT NULL,
+    status     int2         DEFAULT 1                                 NOT NULL,
+    "name"     varchar(256)                                           NOT NULL,
+    code       varchar(64)                                            NOT NULL,
+    remark     varchar(512)                                           NULL,
+    created_by int8                                                   NOT NULL,
+    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    updated_by int8                                                   NOT NULL,
+    updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    tenant_id  varchar(16)                                            NOT NULL,
+    CONSTRAINT sys_dict_type_pkey PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX sys_dict_type_tenant_code_un ON public.sys_dict_type USING btree (tenant_id, code) WHERE deleted_at IS NULL;
+COMMENT ON TABLE public.sys_dict_type IS '字典类型表';
+
+-- Column comments
+
+COMMENT ON COLUMN public.sys_dict_type.id IS '字典类型 ID';
+COMMENT ON COLUMN public.sys_dict_type.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_dict_type."name" IS '字典类型名';
+COMMENT ON COLUMN public.sys_dict_type.code IS '字典类型编码';
+COMMENT ON COLUMN public.sys_dict_type.remark IS '备注';
+COMMENT ON COLUMN public.sys_dict_type.created_by IS '创建人';
+COMMENT ON COLUMN public.sys_dict_type.created_at IS '创建时间';
+COMMENT ON COLUMN public.sys_dict_type.updated_by IS '更新人';
+COMMENT ON COLUMN public.sys_dict_type.updated_at IS '更新时间';
+COMMENT ON COLUMN public.sys_dict_type.deleted_at IS '删除时间';
+COMMENT ON COLUMN public.sys_dict_type.tenant_id IS '租户 ID';
+
+
+-- public.sys_dict_data 定义
+
+-- Drop table
+
+-- DROP TABLE public.sys_dict_data;
+
+CREATE TABLE public.sys_dict_data
+(
+    id           int8                                                   NOT NULL,
+    status       int2         DEFAULT 1                                 NOT NULL,
+    dict_type_id int8                                                   NOT NULL,
+    label        varchar(256)                                           NOT NULL,
+    value        varchar(256)                                           NOT NULL,
+    value_type   varchar(32)  DEFAULT 'string'                          NOT NULL,
+    sort_order   int4         DEFAULT 0                                 NOT NULL,
+    remark       varchar(512)                                           NULL,
+    created_by   int8                                                   NOT NULL,
+    created_at   timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    updated_by   int8                                                   NOT NULL,
+    updated_at   timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_at   timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    tenant_id    varchar(16)                                            NOT NULL,
+    CONSTRAINT sys_dict_data_pkey PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX sys_dict_data_type_value_un ON public.sys_dict_data USING btree (dict_type_id, value) WHERE deleted_at IS NULL;
+COMMENT ON TABLE public.sys_dict_data IS '字典数据表';
+
+-- Column comments
+
+COMMENT ON COLUMN public.sys_dict_data.id IS '字典数据 ID';
+COMMENT ON COLUMN public.sys_dict_data.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_dict_data.dict_type_id IS '字典类型 ID';
+COMMENT ON COLUMN public.sys_dict_data.label IS '字典标签';
+COMMENT ON COLUMN public.sys_dict_data.value IS '字典值';
+COMMENT ON COLUMN public.sys_dict_data.value_type IS '值类型：string/integer/boolean/float/json，系统获取值时根据此类型做预处理';
+COMMENT ON COLUMN public.sys_dict_data.sort_order IS '排序号';
+COMMENT ON COLUMN public.sys_dict_data.remark IS '备注';
+COMMENT ON COLUMN public.sys_dict_data.created_by IS '创建人';
+COMMENT ON COLUMN public.sys_dict_data.created_at IS '创建时间';
+COMMENT ON COLUMN public.sys_dict_data.updated_by IS '更新人';
+COMMENT ON COLUMN public.sys_dict_data.updated_at IS '更新时间';
+COMMENT ON COLUMN public.sys_dict_data.deleted_at IS '删除时间';
+COMMENT ON COLUMN public.sys_dict_data.tenant_id IS '租户 ID';
+
+
 -- basic
 CREATE POLICY basic_tenant_isolation
     ON public.basic
@@ -504,6 +604,18 @@ CREATE POLICY sys_user_group_mapping_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
+-- sys_dict_type
+CREATE POLICY sys_dict_type_tenant_isolation
+    ON public.sys_dict_type
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_dict_data
+CREATE POLICY sys_dict_data_tenant_isolation
+    ON public.sys_dict_data
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
 ALTER TABLE public.basic
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.basic
@@ -547,6 +659,16 @@ ALTER TABLE public.user_role_mapping
 ALTER TABLE public.sys_user_group_mapping
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sys_user_group_mapping
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_dict_type
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_dict_type
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_dict_data
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_dict_data
     FORCE ROW LEVEL SECURITY;
 
 -- 1. 创建用户

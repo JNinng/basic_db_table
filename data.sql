@@ -7,29 +7,29 @@
 -- 1. 租户表 (sys_tenant)
 -- ===========================
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
 VALUES ('t-super-01', 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
-        'default', '默认租户', NULL);
+        'default', '默认租户', NULL, '系统管理员', '13800000000', NULL, 1000);
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
 VALUES ('t-demo-01', 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
-        'demo', '演示租户', 't-super-01');
+        'demo', '演示租户', 't-super-01', '演示联系人', '13800000010', NULL, 50);
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
 VALUES ('t-test-01', 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
-        'test', '测试租户', 't-super-01');
+        'test', '测试租户', 't-super-01', '测试联系人', '13800000020', NULL, 100);
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
 VALUES ('t-dev-01', 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
-        'dev', '开发租户', 't-super-01');
+        'dev', '开发租户', 't-super-01', '开发联系人', '13800000030', NULL, 200);
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
 VALUES ('t-stg-01', 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-super-01',
-        'staging', '预发布租户', 't-super-01');
+        'staging', '预发布租户', 't-super-01', '预发布联系人', '13800000040', NULL, 100);
 
 
 -- ===========================
@@ -145,43 +145,43 @@ VALUES (1002, 1, 2, 101, 2, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:0
 
 -- 1. admin — 默认租户的系统管理员
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
 VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
         1, 1, 'admin', '系统管理员',
         '{scrypt}$e0801$A7n6UaC5UUO/K09rwLa00JQXL5WipLnXHmT/k8xfCDU7Ei3szBiwEPj0O5G/MKznY5Wb3tTkRZLH+IORCt43MQ==$cJKUQc+TRb9KKZSJp+OFn/Yx5p0alwV1G3dFyT2Jf2s=',
-        '超级管理员账号');
+        'admin@example.com', '13800000001', '2026-06-30 08:00:00.000', '超级管理员账号');
 
 -- 2. zhangsan — 技术部员工
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
 VALUES (2, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
         1, 2, 'zhangsan', '张三',
         '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
-        '技术部-后端组');
+        'zhangsan@example.com', '13800000002', NULL, '技术部-后端组');
 
 -- 3. lisi — 产品部员工
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
 VALUES (3, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
         1, 3, 'lisi', '李四',
         '{scrypt}$e0801$Ztjk9jl3scCFvshR0OgATvTBSUqu5kYn0k803sKHm4GAoF43WujIOnG2x6PFELsSYLaTvHtTrmyCNPrjTX6kqg==$k0B6HCx4+DA4HPqMoxnZ+JDsW8aJBO6ch4G4tIXMGbQ=',
-        '产品部-产品经理');
+        'lisi@example.com', '13800000003', NULL, '产品部-产品经理');
 
 -- 4. wangwu — 设计部员工
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
 VALUES (4, 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
         1, 4, 'wangwu', '王五',
         '{scrypt}$e0801$sMnGKuCundaB6372FYv4Gha7tpPEFQnD2cswbudIfhjRY392rrufnUnUV/NgET+EZ2nmMtpD39cUwNfPNrD8pQ==$F1q7Q6HCv+4vKeX8yKtmDP7sIzGW2D8hTntBnlyZ3fc=',
-        '设计部-UI 设计师');
+        'wangwu@example.com', '13800000004', NULL, '设计部-UI 设计师');
 
 -- 5. zhaoliu — 演示租户用户
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
 VALUES (5, 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-demo-01',
         5, 1, 'zhaoliu', '赵六',
         '{scrypt}$e0801$3KDaCR21e9FCbuLRzxiNApLS4M8w5xzu82jgpM+7s9AfPUX8VlhnQauYkQLS9yyTVF0kaZ3K8sVyA/QnKSklLw==$Ptpyytpz0dPZJUWeWkCtGVEjigU9n5HxECEK6CbuJVk=',
-        '演示租户的普通用户');
+        'zhaoliu@example.com', '13800000005', NULL, '演示租户的普通用户');
 
 
 -- ===========================
@@ -245,3 +245,52 @@ VALUES (2, 3, 't-super-01');
 -- wangwu → 产品设计组
 INSERT INTO public.sys_user_group_mapping (group_id, user_id, tenant_id)
 VALUES (2, 4, 't-super-01');
+
+
+-- ===========================
+-- 9. 字典类型表 (sys_dict_type)
+-- ===========================
+
+-- 默认租户下的系统字典
+INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
+VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
+        '数据范围', 'sys_data_scope', '角色数据范围规则，对应 sys_role.data_scope 的取值');
+INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
+VALUES (2, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
+        '角色类型', 'sys_role_type', '角色类型：系统预置 / 租户自定义');
+INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
+VALUES (3, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
+        '数据状态', 'sys_data_status', '通用启用/禁用状态');
+
+
+-- ===========================
+-- 10. 字典数据表 (sys_dict_data)
+-- ===========================
+
+-- sys_data_scope 数据范围
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '仅本人', '1', 'integer', 1, '仅可查看和操作本人数据');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (2, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '本部门', '2', 'integer', 2, '可查看和操作本部门数据');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (3, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '本部门及子部门', '3', 'integer', 3, '可查看和操作本部门及所有子部门数据');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (4, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '指定人', '4', 'integer', 4, '仅可查看指定用户的数据');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (5, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '指定部门', '5', 'integer', 5, '仅可查看指定部门的数据');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (6, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '用户组', '6', 'integer', 6, '仅可查看所属用户组的数据');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (7, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '全租户', '7', 'integer', 7, '可查看租户下全部数据');
+
+-- sys_role_type 角色类型
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (8, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01', 2, '系统预置', '1', 'integer', 1, '系统内置角色，不可删除，核心权限不可剥离');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (9, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01', 2, '租户自定义', '2', 'integer', 2, '租户自行创建的角色，可删除');
+
+-- sys_data_status 数据状态
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (10, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01', 3, '启用', '1', 'integer', 1, '数据正常可用');
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (11, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01', 3, '禁用', '0', 'integer', 2, '数据被禁用');
