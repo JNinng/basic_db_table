@@ -46,14 +46,14 @@ CREATE TABLE public.sys_dept
 (
     id                  int8                                                   NOT NULL,
     status              int2         DEFAULT 1                                 NOT NULL,
+    "name"              varchar(256)                                           NOT NULL,
+    parent_id           int8                                                   NULL,
     created_by          int8                                                   NOT NULL,
     created_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by          int8                                                   NOT NULL,
     updated_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at          timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id           varchar(16)                                            NOT NULL,
-    parent_id           int8                                                   NULL,
-    "name"              varchar(256)                                           NOT NULL,
     owner_user_id       int8                                                   NOT NULL,
     owner_user_group_id int8                                                   NULL,
     CONSTRAINT sys_dept_pkey PRIMARY KEY (id)
@@ -65,14 +65,14 @@ COMMENT ON TABLE public.sys_dept IS '部门表';
 
 COMMENT ON COLUMN public.sys_dept.id IS '部门 ID';
 COMMENT ON COLUMN public.sys_dept.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_dept."name" IS '部门名';
+COMMENT ON COLUMN public.sys_dept.parent_id IS '父级部门 ID';
 COMMENT ON COLUMN public.sys_dept.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_dept.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_dept.updated_by IS '更新人';
-COMMENT ON COLUMN public.sys_dept.updated_at IS '更新人';
+COMMENT ON COLUMN public.sys_dept.updated_at IS '更新时间';
 COMMENT ON COLUMN public.sys_dept.deleted_at IS '删除时间';
 COMMENT ON COLUMN public.sys_dept.tenant_id IS '租户 ID';
-COMMENT ON COLUMN public.sys_dept.parent_id IS '父级部门 ID';
-COMMENT ON COLUMN public.sys_dept."name" IS '部门名';
 COMMENT ON COLUMN public.sys_dept.owner_user_id IS '部门管理员用户';
 COMMENT ON COLUMN public.sys_dept.owner_user_group_id IS '归属用户组 ID';
 
@@ -198,18 +198,18 @@ CREATE TABLE public.sys_role
 (
     id            int8                                                   NOT NULL,
     status        int2         DEFAULT 1                                 NOT NULL,
-    created_by    int8                                                   NOT NULL,
-    created_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
-    updated_by    int8                                                   NOT NULL,
-    updated_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
-    deleted_at    timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
-    tenant_id     varchar(16)                                            NOT NULL,
     "name"        varchar(256)                                           NOT NULL,
     code          varchar(64)                                            NOT NULL,
     role_type     int2         DEFAULT 2                                 NOT NULL,
     data_scope    int2         DEFAULT 1                                 NOT NULL,
     scope_dept_id int8                                                   NULL,
     remark        varchar(512)                                           NULL,
+    created_by    int8                                                   NOT NULL,
+    created_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    updated_by    int8                                                   NOT NULL,
+    updated_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_at    timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    tenant_id     varchar(16)                                            NOT NULL,
     CONSTRAINT sys_role_pkey PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX sys_role_tenant_code_un ON public.sys_role USING btree (tenant_id, code) WHERE deleted_at IS NULL;
@@ -220,18 +220,18 @@ COMMENT ON TABLE public.sys_role IS '角色表';
 
 COMMENT ON COLUMN public.sys_role.id IS '主键 ID';
 COMMENT ON COLUMN public.sys_role.status IS '数据状态，0：禁用、1：启用';
-COMMENT ON COLUMN public.sys_role.created_by IS '创建人';
-COMMENT ON COLUMN public.sys_role.created_at IS '创建时间';
-COMMENT ON COLUMN public.sys_role.updated_by IS '更新人';
-COMMENT ON COLUMN public.sys_role.updated_at IS '更新时间';
-COMMENT ON COLUMN public.sys_role.deleted_at IS '删除时间';
-COMMENT ON COLUMN public.sys_role.tenant_id IS '租户 ID';
 COMMENT ON COLUMN public.sys_role."name" IS '角色名';
 COMMENT ON COLUMN public.sys_role.code IS '权限编码';
 COMMENT ON COLUMN public.sys_role.role_type IS '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义';
 COMMENT ON COLUMN public.sys_role.data_scope IS '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-全租户 7-用户组';
 COMMENT ON COLUMN public.sys_role.scope_dept_id IS '组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配';
 COMMENT ON COLUMN public.sys_role.remark IS '备注';
+COMMENT ON COLUMN public.sys_role.created_by IS '创建人';
+COMMENT ON COLUMN public.sys_role.created_at IS '创建时间';
+COMMENT ON COLUMN public.sys_role.updated_by IS '更新人';
+COMMENT ON COLUMN public.sys_role.updated_at IS '更新时间';
+COMMENT ON COLUMN public.sys_role.deleted_at IS '删除时间';
+COMMENT ON COLUMN public.sys_role.tenant_id IS '租户 ID';
 
 
 -- public.sys_role_id_scope 定义
@@ -283,14 +283,14 @@ CREATE TABLE public.sys_tenant
 (
     id         varchar(16)                                            NOT NULL,
     status     int2         DEFAULT 1                                 NOT NULL,
+    code       varchar(32)                                            NOT NULL,
+    "name"     varchar(256)                                           NOT NULL,
     created_by int8                                                   NOT NULL,
     created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by int8                                                   NOT NULL,
     updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id  varchar(16)                                            NOT NULL,
-    code       varchar(32)                                            NOT NULL,
-    "name"     varchar(256)                                           NOT NULL,
     CONSTRAINT sys_tenant_name_un UNIQUE (name),
     CONSTRAINT sys_tenant_pk PRIMARY KEY (id),
     CONSTRAINT sys_tenant_un UNIQUE (code)
@@ -301,14 +301,14 @@ COMMENT ON TABLE public.sys_tenant IS '租户表';
 
 COMMENT ON COLUMN public.sys_tenant.id IS '租户 ID';
 COMMENT ON COLUMN public.sys_tenant.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_tenant.code IS '租户编码';
+COMMENT ON COLUMN public.sys_tenant."name" IS '租户名';
 COMMENT ON COLUMN public.sys_tenant.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_tenant.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_tenant.updated_by IS '更新人';
 COMMENT ON COLUMN public.sys_tenant.updated_at IS '更新时间';
 COMMENT ON COLUMN public.sys_tenant.deleted_at IS '删除时间';
 COMMENT ON COLUMN public.sys_tenant.tenant_id IS '租户 ID';
-COMMENT ON COLUMN public.sys_tenant.code IS '租户编码';
-COMMENT ON COLUMN public.sys_tenant."name" IS '租户名';
 
 
 -- public.sys_user 定义
@@ -321,6 +321,10 @@ CREATE TABLE public.sys_user
 (
     id                  int8                                                   NOT NULL,
     status              int2         DEFAULT 1                                 NOT NULL,
+    "name"              varchar(256)                                           NOT NULL,
+    nickname            varchar(256)                                           NOT NULL,
+    "password"          text                                                   NOT NULL,
+    remark              varchar                                                NULL,
     created_by          int8                                                   NOT NULL,
     created_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by          int8                                                   NOT NULL,
@@ -330,10 +334,6 @@ CREATE TABLE public.sys_user
     owner_user_id       int8                                                   NULL,
     owner_dept_id       int8                                                   NULL,
     owner_user_group_id int8                                                   NULL,
-    "name"              varchar(256)                                           NOT NULL,
-    nickname            varchar(256)                                           NOT NULL,
-    "password"          text                                                   NOT NULL,
-    remark              varchar                                                NULL,
     CONSTRAINT sys_user_pkey PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX sys_user_tenant_name_un ON public.sys_user USING btree (tenant_id, name) WHERE deleted_at IS NULL;
@@ -343,6 +343,10 @@ COMMENT ON TABLE public.sys_user IS '用户表';
 
 COMMENT ON COLUMN public.sys_user.id IS '用户 ID';
 COMMENT ON COLUMN public.sys_user.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_user."name" IS '用户名';
+COMMENT ON COLUMN public.sys_user.nickname IS '昵称';
+COMMENT ON COLUMN public.sys_user."password" IS '密码';
+COMMENT ON COLUMN public.sys_user.remark IS '备注';
 COMMENT ON COLUMN public.sys_user.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_user.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_user.updated_by IS '更新人';
@@ -352,10 +356,6 @@ COMMENT ON COLUMN public.sys_user.tenant_id IS '租户 ID';
 COMMENT ON COLUMN public.sys_user.owner_user_id IS '归属用户 ID';
 COMMENT ON COLUMN public.sys_user.owner_dept_id IS '归属部门 ID';
 COMMENT ON COLUMN public.sys_user.owner_user_group_id IS '归属用户组 ID';
-COMMENT ON COLUMN public.sys_user."name" IS '用户名';
-COMMENT ON COLUMN public.sys_user.nickname IS '昵称';
-COMMENT ON COLUMN public.sys_user."password" IS '密码';
-COMMENT ON COLUMN public.sys_user.remark IS '备注';
 
 
 -- public.user_role_mapping 定义
@@ -390,16 +390,16 @@ CREATE TABLE public.sys_user_group
 (
     id            int8                                                   NOT NULL,
     status        int2         DEFAULT 1                                 NOT NULL,
+    "name"        varchar(256)                                           NOT NULL,
+    code          varchar(64)                                            NOT NULL,
+    remark        varchar(512)                                           NULL,
     created_by    int8                                                   NOT NULL,
     created_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by    int8                                                   NOT NULL,
     updated_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at    timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id     varchar(16)                                            NOT NULL,
-    "name"        varchar(256)                                           NOT NULL,
-    code          varchar(64)                                            NOT NULL,
     owner_user_id int8                                                   NULL,
-    remark        varchar(512)                                           NULL,
     CONSTRAINT sys_user_group_pkey PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX sys_user_group_tenant_code_un ON public.sys_user_group USING btree (tenant_id, code) WHERE deleted_at IS NULL;
@@ -410,16 +410,16 @@ COMMENT ON TABLE public.sys_user_group IS '用户组表';
 
 COMMENT ON COLUMN public.sys_user_group.id IS '用户组 ID';
 COMMENT ON COLUMN public.sys_user_group.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_user_group."name" IS '组名';
+COMMENT ON COLUMN public.sys_user_group.code IS '组编码';
+COMMENT ON COLUMN public.sys_user_group.remark IS '备注';
 COMMENT ON COLUMN public.sys_user_group.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_user_group.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_user_group.updated_by IS '更新人';
 COMMENT ON COLUMN public.sys_user_group.updated_at IS '更新时间';
 COMMENT ON COLUMN public.sys_user_group.deleted_at IS '删除时间';
 COMMENT ON COLUMN public.sys_user_group.tenant_id IS '租户 ID';
-COMMENT ON COLUMN public.sys_user_group."name" IS '组名';
-COMMENT ON COLUMN public.sys_user_group.code IS '组编码';
 COMMENT ON COLUMN public.sys_user_group.owner_user_id IS '组长/归属用户';
-COMMENT ON COLUMN public.sys_user_group.remark IS '备注';
 
 
 -- public.sys_user_group_mapping 定义
