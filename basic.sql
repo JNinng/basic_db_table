@@ -223,7 +223,7 @@ COMMENT ON COLUMN public.sys_role.status IS '数据状态，0：禁用、1：启
 COMMENT ON COLUMN public.sys_role."name" IS '角色名';
 COMMENT ON COLUMN public.sys_role.code IS '权限编码';
 COMMENT ON COLUMN public.sys_role.role_type IS '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义';
-COMMENT ON COLUMN public.sys_role.data_scope IS '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-全租户 7-用户组';
+COMMENT ON COLUMN public.sys_role.data_scope IS '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户';
 COMMENT ON COLUMN public.sys_role.scope_dept_id IS '组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配';
 COMMENT ON COLUMN public.sys_role.remark IS '备注';
 COMMENT ON COLUMN public.sys_role.created_by IS '创建人';
@@ -285,6 +285,7 @@ CREATE TABLE public.sys_tenant
     status     int2         DEFAULT 1                                 NOT NULL,
     code       varchar(32)                                            NOT NULL,
     "name"     varchar(256)                                           NOT NULL,
+    parent_id  varchar(16)                                            NULL,
     created_by int8                                                   NOT NULL,
     created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by int8                                                   NOT NULL,
@@ -303,6 +304,7 @@ COMMENT ON COLUMN public.sys_tenant.id IS '租户 ID';
 COMMENT ON COLUMN public.sys_tenant.status IS '数据状态，0：禁用、1：启用';
 COMMENT ON COLUMN public.sys_tenant.code IS '租户编码';
 COMMENT ON COLUMN public.sys_tenant."name" IS '租户名';
+COMMENT ON COLUMN public.sys_tenant.parent_id IS '父级租户 ID';
 COMMENT ON COLUMN public.sys_tenant.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_tenant.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_tenant.updated_by IS '更新人';

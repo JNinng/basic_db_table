@@ -7,29 +7,29 @@
 -- 1. 租户表 (sys_tenant)
 -- ===========================
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name")
+                               "name", parent_id)
 VALUES ('t-super-01', 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
-        'default', '默认租户');
+        'default', '默认租户', NULL);
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name")
+                               "name", parent_id)
 VALUES ('t-demo-01', 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
-        'demo', '演示租户');
+        'demo', '演示租户', 't-super-01');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name")
+                               "name", parent_id)
 VALUES ('t-test-01', 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
-        'test', '测试租户');
+        'test', '测试租户', 't-super-01');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name")
+                               "name", parent_id)
 VALUES ('t-dev-01', 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
-        'dev', '开发租户');
+        'dev', '开发租户', 't-super-01');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name")
+                               "name", parent_id)
 VALUES ('t-stg-01', 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-super-01',
-        'staging', '预发布租户');
+        'staging', '预发布租户', 't-super-01');
 
 
 -- ===========================
