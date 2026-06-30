@@ -167,6 +167,44 @@
 
 ---
 
+### 数据范围查询链路
+
+当用户进行操作时，权限拦截器根据角色 `data_scope` 动态附加过滤条件，决定用户能看到哪些数据：
+
+```
+用户 A
+  ↓
+user_role_mapping → 查出用户 A 的所有角色
+  ↓
+sys_role.data_scope → 确定数据范围模式（本人/部门/用户组/全租户...）
+  ↓
+sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
+│                   用户 ID / 部门 ID / 用户组 ID
+│
+├── data_scope=6（用户组）
+│   查询附加：WHERE owner_user_group_id IN (role_id_scope 中 type=3 的数据)
+│
+├── data_scope=2/3（本部门/部门及子部门）
+│   查询附加：WHERE owner_dept_id IN (用户所在部门及其子部门)
+│             子部门通过 sys_dept_closure 递归获取
+│
+├── data_scope=4（指定人）
+│   查询附加：WHERE owner_user_id IN (role_id_scope 中 type=1 的数据)
+│
+├── data_scope=5（指定部门）
+│   查询附加：WHERE owner_dept_id IN (role_id_scope 中 type=2 的数据)
+│
+├── data_scope=1（仅本人）
+│   查询附加：WHERE owner_user_id = 当前用户
+│
+└── data_scope=7（全租户）
+    不附加归属过滤，仅受 RLS 租户隔离约束
+```
+
+> **部门 vs 用户组**：部门基于树形组织架构（`parent_id` + 闭包表），适合正式汇报关系；用户组是扁平的灵活分组，适合跨部门项目协作。两者可同时作用于同一张表。
+
+---
+
 ### sys_user
 
 用户表为系统的登录主体。
@@ -188,7 +226,11 @@
 
 ### sys_user_group
 
-用户组提供独立于部门树的分组维度，适用于跨部门临时团队等场景。
+用户组提供独立于部门树的分组维度，适用于跨部门临时团队等场景。在权限体系中，用户组是 **data_scope = 6（用户组）** 的核心载体：
+
+- **数据归属标记**：业务表通过 `owner_user_group_id` 标记数据归属于哪个用户组
+- **成员关系**：`sys_user_group_mapping` 定义用户 → 组的多对多关系
+- **范围绑定**：`sys_role_id_scope`（`type = 3`）将角色可见范围限定到具体用户组
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
