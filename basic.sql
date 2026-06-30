@@ -442,3 +442,138 @@ CREATE INDEX idx_sugm_tenant ON public.sys_user_group_mapping USING btree (tenan
 COMMENT ON COLUMN public.sys_user_group_mapping.group_id IS '用户组 ID';
 COMMENT ON COLUMN public.sys_user_group_mapping.user_id IS '用户 ID';
 COMMENT ON COLUMN public.sys_user_group_mapping.tenant_id IS '租户 ID';
+
+
+-- basic
+CREATE POLICY basic_tenant_isolation
+    ON public.basic
+    USING (
+    tenant_id = current_setting('app.tenant_id', true)
+    )
+    WITH CHECK (
+    tenant_id = current_setting('app.tenant_id', true)
+    );
+
+-- sys_dept
+CREATE POLICY sys_dept_tenant_isolation
+    ON public.sys_dept
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_role
+CREATE POLICY sys_role_tenant_isolation
+    ON public.sys_role
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_role_id_scope
+CREATE POLICY sys_role_id_scope_tenant_isolation
+    ON public.sys_role_id_scope
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_tenant
+CREATE POLICY sys_tenant_tenant_isolation
+    ON public.sys_tenant
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_user
+CREATE POLICY sys_user_tenant_isolation
+    ON public.sys_user
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_user_group
+CREATE POLICY sys_user_group_tenant_isolation
+    ON public.sys_user_group
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- user_role_mapping
+CREATE POLICY user_role_mapping_tenant_isolation
+    ON public.user_role_mapping
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_user_group_mapping
+CREATE POLICY sys_user_group_mapping_tenant_isolation
+    ON public.sys_user_group_mapping
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+ALTER TABLE public.basic
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.basic
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_dept
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_dept
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_role
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_role
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_role_id_scope
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_role_id_scope
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_tenant
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_tenant
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_user
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_user
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_user_group
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_user_group
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.user_role_mapping
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_role_mapping
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_user_group_mapping
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_user_group_mapping
+    FORCE ROW LEVEL SECURITY;
+
+-- 1. 创建用户
+CREATE USER app_u WITH PASSWORD 'app_u_pwd';
+
+-- 2. 授予登录权限
+ALTER USER app_u WITH LOGIN;
+
+-- 3. 授予数据库级别权限
+GRANT CONNECT ON DATABASE orm_test TO app_u;
+
+GRANT USAGE ON SCHEMA public TO app_u;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON ALL TABLES IN SCHEMA public
+    TO app_u;
+
+GRANT USAGE, SELECT
+    ON ALL SEQUENCES IN SCHEMA public
+    TO app_u;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE
+    ON TABLES
+    TO app_u;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT
+    ON SEQUENCES
+    TO app_u;
+
+GRANT SET ON PARAMETER app.tenant_id TO app_u;
