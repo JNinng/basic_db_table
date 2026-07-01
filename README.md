@@ -16,6 +16,14 @@
 | [user_role_mapping](#userrolemapping) | 用户-角色映射 | 用户与角色的多对多关联 |
 | [sys_user_group_mapping](#sysusergroupmapping) | 用户组-成员映射 | 用户组成员关系 |
 | [basic](#basic) | 基础字段示例表 | 展示标准字段模板，供新建业务表时参考 |
+| [sys_menu](#sysmenu-1) | 菜单/权限表 | 功能权限树，定义目录/菜单/按钮三级权限点，补全 RBAC 的功能维度 |
+| [sys_role_menu](#sysrolemenu) | 角色-菜单映射 | 将菜单权限绑定到角色 |
+| [sys_login_log](#sysloginlog) | 登录日志 | 记录登录尝试（含失败），追加写入不可变更 |
+| [sys_operation_log](#sysoperationlog) | 操作日志 | 记录用户操作行为与数据变更，配合审计员角色使用 |
+| [sys_session](#syssession) | 会话表 | 管理访问令牌和刷新令牌，支持服务端撤销 |
+| [sys_config](#sysconfig) | 系统全局配置 | 平台级 key-value 配置参数，不绑定租户 |
+| [sys_tenant_config](#systenantconfig) | 租户配置 | 租户级自定义配置，覆盖全局默认值 |
+| [sys_feature_flag](#sysfeatureflag) | 功能特性 | 租户级功能开关，控制灰度发布和按租户授权 |
 
 ## 实体关系图
 
@@ -53,9 +61,46 @@
                    └───────────────────┘
 ```
 
+### 业务增强模块（enhance.sql）
+
+在核心 RBAC 基础上，补充功能权限、审计日志、会话管理、系统配置四大能力：
+
+```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                    功能权限层                                      │
+  │  ┌──────────────┐      ┌────────────────┐                       │
+  │  │   sys_menu   │◄─────│ sys_role_menu  │                       │
+  │  │ (菜单/权限树)  │      │ (角色-菜单映射)  │                       │
+  │  └──────────────┘      └────────┬───────┘                       │
+  │                                 │ role_id                       │
+  │                                 ▼                               │
+  │                          ┌────────────┐                        │
+  │                          │  sys_role  │ ← 复用 basic.sql 的角色  │
+  │                          └────────────┘                        │
+  ├─────────────────────────────────────────────────────────────────┤
+  │                    审计日志层（追加写入）                           │
+  │  ┌──────────────────┐    ┌──────────────────────┐               │
+  │  │ sys_login_log    │    │ sys_operation_log    │               │
+  │  │ (登录尝试记录)     │    │ (操作行为记录)         │               │
+  │  └──────────────────┘    └──────────────────────┘               │
+  ├─────────────────────────────────────────────────────────────────┤
+  │                    会话管理层                                     │
+  │  ┌────────────────────────────────────────────┐                  │
+  │  │              sys_session                    │                  │
+  │  │    (令牌哈希存储，支持服务端撤销)                │                  │
+  │  └────────────────────────────────────────────┘                  │
+  ├─────────────────────────────────────────────────────────────────┤
+  │                    配置管理层                                     │
+  │  ┌──────────────┐   ┌────────────────┐   ┌──────────────────┐   │
+  │  │  sys_config  │   │sys_tenant_config│   │sys_feature_flag  │   │
+  │  │ (全局配置)    │   │ (租户配置)       │   │ (功能特性开关)     │   │
+  │  └──────────────┘   └────────────────┘   └──────────────────┘   │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
 ## 通用审计字段
 
-除 `sys_dept_closure`、映射表外，全部业务表均包含以下审计字段：
+除 `sys_dept_closure`、映射表外，全部业务表均包含以下审计字段。日志表（`sys_login_log`、`sys_operation_log`）为追加写入（append-only），省略 `updated_by`/`updated_at`/`deleted_at`：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -287,6 +332,192 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 ---
 
+## 业务增强表详解
+
+以下表来自 `enhance.sql`，在核心 RBAC 之上补充功能权限、审计日志、会话管理、系统配置四大能力。
+
+### sys_menu
+
+菜单/权限树，定义系统功能权限的层级结构。通过 `sys_role_menu` 将权限点绑定到角色，补全 RBAC 的**功能权限**维度（与 `sys_role.data_scope` 的数据权限维度互补）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 菜单 ID |
+| `name` | varchar(64) | 菜单/权限名称 |
+| `permission_code` | varchar(128) | 权限编码（租户内唯一），应用层匹配用，如 `sys:user:create` |
+| `parent_id` | int8 | 父级菜单 ID（NULL 为根菜单） |
+| `menu_type` | int2 | 1-目录，2-菜单，3-按钮（操作权限点） |
+| `icon` | varchar(128) | 菜单图标 |
+| `route_path` | varchar(256) | 前端路由路径 |
+| `component` | varchar(256) | 前端组件路径 |
+| `sort_order` | int4 | 排序号 |
+
+**权限编码设计**：采用 `:` 分隔的三级命名法，如 `sys:user:create` 表示"系统模块-用户管理-新增"。应用层通过注解（如 `@RequiresPermission("sys:user:create")`）在 API 端点上匹配。
+
+**唯一约束**：`(tenant_id, permission_code)`（排除已删除记录）。
+
+---
+
+### sys_role_menu
+
+角色与菜单权限的多对多关联（纯映射，仅有业务键）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `role_id` | int8 | 角色 ID |
+| `menu_id` | int8 | 菜单/权限 ID |
+| `tenant_id` | varchar(16) | 租户 ID |
+
+**主键**：`(role_id, menu_id)`
+
+**权限判断流程**：
+```
+用户请求 API
+  → 从 JWT/会话 获取用户角色列表
+  → sys_role_menu 查出角色拥有的菜单权限编码
+  → 匹配 API 端点所需的权限编码
+  → 通过/拒绝
+```
+
+---
+
+### sys_login_log
+
+登录日志表，记录每次登录尝试（包括成功和失败）。追加写入（append-only），`bigserial` 自增主键，省略 `updated_by`/`updated_at`/`deleted_at`。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | bigserial | 日志 ID（自增） |
+| `user_id` | int8 | 用户 ID |
+| `username` | varchar(256) | 用户名（冗余，便于快速查看） |
+| `ip_address` | varchar(64) | 登录 IP 地址 |
+| `user_agent` | varchar(512) | 浏览器/客户端信息 |
+| `login_type` | varchar(32) | 登录方式：password/sms/oauth/refresh_token |
+| `is_success` | boolean | 是否登录成功 |
+| `failure_reason` | varchar(256) | 失败原因：密码错误、账号禁用、租户过期等 |
+| `login_at` | timestamp | 登录时间 |
+
+**使用场景**：安全审计、暴力破解检测、用户登录历史查询。
+
+---
+
+### sys_operation_log
+
+操作日志表，记录用户对系统数据的操作行为。追加写入，`bigserial` 自增主键。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | bigserial | 日志 ID（自增） |
+| `user_id` | int8 | 操作用户 ID |
+| `username` | varchar(256) | 用户名（冗余） |
+| `operation_type` | varchar(64) | 操作类型：CREATE/UPDATE/DELETE/EXPORT/IMPORT 等 |
+| `target_table` | varchar(64) | 操作目标表名 |
+| `target_id` | varchar(64) | 操作目标记录 ID |
+| `old_value` | text | 操作前数据（JSON） |
+| `new_value` | text | 操作后数据（JSON） |
+| `ip_address` | varchar(64) | 请求 IP |
+| `api_path` | varchar(512) | API 路径 |
+| `http_method` | varchar(16) | GET/POST/PUT/DELETE |
+| `duration_ms` | int4 | 请求耗时（毫秒） |
+| `result_code` | varchar(32) | 结果码：200/400/500 等 |
+| `request_id` | varchar(64) | 请求追踪 ID，用于关联同一请求的多个操作 |
+| `operated_at` | timestamp | 操作时间 |
+
+**适用场景**：
+- **合规审计**：种子数据中的"审计员"角色可以此表为数据源
+- **安全溯源**：追溯某用户在特定时间段内的所有操作
+- **数据恢复**：通过 `old_value`/`new_value` 了解数据变更内容
+
+---
+
+### sys_session
+
+用户会话/令牌表，管理访问令牌和刷新令牌。令牌字段仅存 **SHA-256 哈希**，不存明文令牌。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 会话 ID |
+| `user_id` | int8 | 用户 ID |
+| `token_hash` | varchar(128) | 访问令牌哈希（UNIQUE） |
+| `refresh_token_hash` | varchar(128) | 刷新令牌哈希 |
+| `expires_at` | timestamp | 访问令牌过期时间 |
+| `refresh_expires_at` | timestamp | 刷新令牌过期时间 |
+| `last_activity_at` | timestamp | 最后活跃时间，用于僵尸会话检测 |
+| `device_info` | varchar(512) | 设备信息 |
+| `ip_address` | varchar(64) | 登录 IP |
+| `is_revoked` | boolean | 是否已主动撤销 |
+
+**唯一约束**：`token_hash` UNIQUE。
+
+**关键能力**：
+- **服务端撤销**：设置 `is_revoked = true`，即使 JWT 未过期也不再可用
+- **退出所有设备**：撤销用户的所有会话
+- **令牌轮换**：刷新令牌时，旧 refresh_token 标记为已使用
+
+---
+
+### sys_config
+
+系统全局配置表，存储平台级 key-value 配置参数。**不绑定租户、无 RLS**，由平台超级管理员维护。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 配置 ID |
+| `name` | varchar(128) | 配置名称 |
+| `config_key` | varchar(128) | 配置键（UNIQUE） |
+| `value` | text | 配置值 |
+| `value_type` | varchar(32) | 值类型：string/integer/boolean/float/json |
+| `remark` | varchar(512) | 备注 |
+
+**典型配置项**：
+- `session.timeout` — 会话超时时间（秒）
+- `auth.lockout-threshold` — 密码错误锁定阈值
+- `smtp.host` — 邮件服务器地址
+- `system.name` — 系统显示名称
+
+---
+
+### sys_tenant_config
+
+租户配置表，存储各租户的个性化配置，可覆盖全局默认值。有 RLS 租户隔离。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 配置 ID |
+| `name` | varchar(128) | 配置名称 |
+| `config_key` | varchar(128) | 配置键（租户内唯一） |
+| `value` | text | 配置值 |
+| `value_type` | varchar(32) | 值类型：string/integer/boolean/float/json |
+| `remark` | varchar(512) | 备注 |
+
+**唯一约束**：`(tenant_id, config_key)`（排除已删除记录）。
+
+**与 sys_config 的关系**：应用层先查 `sys_tenant_config` 获取租户级值，未命中则回退到 `sys_config` 的全局默认值。
+
+---
+
+### sys_feature_flag
+
+功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 特性 ID |
+| `name` | varchar(128) | 特性名称 |
+| `flag_key` | varchar(128) | 特性键（租户内唯一） |
+| `description` | varchar(512) | 特性描述 |
+| `is_enabled` | boolean | 是否启用 |
+
+**唯一约束**：`(tenant_id, flag_key)`（排除已删除记录）。
+
+**典型特性**：
+- `export_enabled` — 数据导出功能
+- `api_access` — API 密钥访问
+- `sso_enabled` — SSO 单点登录
+- `audit_log` — 操作日志记录
+
+---
+
 ## 多租户隔离（RLS）
 
 全部表均启用了 **Row-Level Security**，并配置了租户隔离策略：
@@ -327,6 +558,20 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 | sys_dept_closure | `idx_closure_descendant` | B-tree | 加速后代→祖先查询 |
 | user_role_mapping | `idx_urm_tenant` | B-tree | 加速按租户查询 |
 | sys_user_group_mapping | `idx_sugm_tenant` | B-tree | 加速按租户查询 |
+| sys_menu | `sys_menu_tenant_code_un` | 部分唯一索引 | 同租户下权限编码唯一 |
+| sys_role_menu | `idx_srm_tenant` | B-tree | 加速按租户查询 |
+| sys_role_menu | `idx_srm_menu_id` | B-tree | 加速按菜单 ID 反向查询 |
+| sys_login_log | `idx_login_log_tenant_user` | B-tree | 加速按租户+用户查询登录历史 |
+| sys_login_log | `idx_login_log_tenant_time` | B-tree | 加速按租户+时间排序 |
+| sys_operation_log | `idx_operation_log_tenant_user` | B-tree | 加速按租户+用户查询操作记录 |
+| sys_operation_log | `idx_operation_log_tenant_time` | B-tree | 加速按租户+时间排序 |
+| sys_operation_log | `idx_operation_log_type` | B-tree | 加速按租户+操作类型过滤 |
+| sys_session | `sys_session_token_hash_un` | 唯一索引 | 通过令牌哈希快速查找会话 |
+| sys_session | `sys_session_refresh_token_hash_un` | 部分唯一索引 | 刷新令牌哈希唯一 |
+| sys_session | `idx_session_tenant_user` | B-tree | 加速按租户+用户查询会话 |
+| sys_config | `sys_config_key_un` | 部分唯一索引 | 配置键全局唯一 |
+| sys_tenant_config | `sys_tenant_config_key_un` | 部分唯一索引 | 同租户下配置键唯一 |
+| sys_feature_flag | `sys_feature_flag_tenant_key_un` | 部分唯一索引 | 同租户下特性键唯一 |
 
 > 多数唯一索引使用 `WHERE deleted_at IS NULL` 部分索引，允许已删除记录重复，同时保证活跃数据唯一。
 
@@ -341,6 +586,8 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 ## 设计约定
 
 1. **字段顺序**：业务字段在前 → 审计字段（`created_by/at`、`updated_by/at`、`deleted_at`）在后 → `tenant_id` 收尾
-2. **主键**：使用 `int8`（bigint）自增或雪花 ID，由应用层生成
+2. **主键**：使用 `int8`（bigint）自增或雪花 ID，由应用层生成。日志表（`sys_login_log`、`sys_operation_log`）使用 `bigserial` 自增主键
 3. **时间戳**：统一使用 `timestamp(0)`（秒级精度）
 4. **默认值**：`status` 默认 1（启用），`created_at`/`updated_at` 默认当前时间
+5. **追加写入**：日志表（`sys_login_log`、`sys_operation_log`）为 append-only 设计，省略 `updated_by`/`updated_at`/`deleted_at`，由应用层保证只追加不修改
+6. **全局配置**：`sys_config` 为平台级配置，不绑定租户，无 RLS 策略
