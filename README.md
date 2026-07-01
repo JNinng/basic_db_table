@@ -24,6 +24,7 @@
 | [sys_config](#sysconfig) | 系统全局配置 | 平台级 key-value 配置参数，不绑定租户 |
 | [sys_tenant_config](#systenantconfig) | 租户配置 | 租户级自定义配置，覆盖全局默认值 |
 | [sys_feature_flag](#sysfeatureflag) | 功能特性 | 租户级功能开关，控制灰度发布和按租户授权 |
+| [sys_translation](#systranslation) | 通用翻译表 | 为业务表字段提供多语言翻译，支持按实体-字段-语言粒度管理 |
 
 ## 实体关系图
 
@@ -98,6 +99,21 @@
   └─────────────────────────────────────────────────────────────────┘
 ```
 
+### 国际适配层
+
+在增强模块之上，通过 `sys_translation` 通用翻译表提供多语言支持：
+
+```
+  ┌──────────────────────────────────────────────────────────────┐
+  │                    国际适配层（enhance.sql）                    │
+  │  ┌──────────────────────────────────────────────────────────┐│
+  │  │                   sys_translation                         ││
+  │  │    通用翻译表，为 sys_menu.name / sys_dict_data.label /   ││
+  │  │    sys_dept.name / sys_config.name 等字段提供多语言支持    ││
+  │  └──────────────────────────────────────────────────────────┘│
+  └──────────────────────────────────────────────────────────────┘
+```
+
 ## 通用审计字段
 
 除 `sys_dept_closure`、映射表外，全部业务表均包含以下审计字段。日志表（`sys_login_log`、`sys_operation_log`）为追加写入（append-only），省略 `updated_by`/`updated_at`/`deleted_at`：
@@ -126,6 +142,7 @@
 | `code` | varchar(32) | 租户编码（UNIQUE） |
 | `name` | varchar(256) | 租户名（UNIQUE） |
 | `parent_id` | varchar(16) | 父级租户 ID（NULL 为根租户） |
+| `default_locale` | varchar(10) | 租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值 |
 
 > 该表自身也受 RLS 保护，遵循"租户隔离"原则。不过根租户的 `tenant_id` 等于自身 `id`，RLS 需要特殊处理（如通过 superuser 或 bypass 策略访问全部租户）。
 
@@ -261,6 +278,7 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 | `nickname` | varchar(256) | 昵称 |
 | `password` | text | 密码（加密存储） |
 | `remark` | varchar | 备注 |
+| `locale` | varchar(10) | 用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面语言和翻译回退优先级 |
 | `owner_user_id` | int8 | 归属用户 ID（如直属上级） |
 | `owner_dept_id` | int8 | 归属部门 ID |
 | `owner_user_group_id` | int8 | 归属用户组 ID |
@@ -518,6 +536,59 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 ---
 
+### sys_translation
+
+通用翻译表，为业务表字段提供多语言支持，覆盖菜单名称、字典标签、部门/角色名称等可翻译内容。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 翻译 ID |
+| `table_name` | varchar(64) | 来源表名，如 `sys_menu`、`sys_dict_data` |
+| `row_id` | int8 | 来源行主键 ID |
+| `column_name` | varchar(64) | 来源列名，如 `name`、`label` |
+| `locale` | varchar(10) | 语言代码（BCP-47），如 `zh-CN`、`en-US`、`ja-JP` |
+| `value` | text | 翻译文本，对应语言的展示值 |
+| `remark` | varchar(512) | 备注 |
+
+**唯一约束**：`(table_name, row_id, column_name, locale, tenant_id)`（排除已删除记录），确保同来源字段同语言只有一条有效翻译。
+
+**设计要点**：
+- **泛化设计**：一张 `sys_translation` 表覆盖所有实体字段的翻译，不需要为每张表建独立翻译表。
+- **回退链**：应用层查询优先级为 `用户语言 → 租户默认语言 → 原始字段值`，允许部分翻译逐步上线。
+- **租户隔离**：带 `tenant_id`，与所有业务表一致的 RLS 策略，翻译数据随业务数据隔离。
+- **status 字段**：`status = 0` 可禁用某条翻译，使其回退到下一优先级，无需物理删除。
+
+**典型查询 — 获取用户语言的菜单树**：
+```sql
+SELECT
+    m.id,
+    m.parent_id,
+    m.menu_type,
+    m.permission_code,
+    COALESCE(t.value, m.name) AS display_name,  -- 有翻译用翻译，否则回退原始值
+    m.route_path,
+    m.icon,
+    m.sort_order
+FROM sys_menu m
+LEFT JOIN sys_translation t
+    ON  t.table_name  = 'sys_menu'
+    AND t.row_id      = m.id
+    AND t.column_name = 'name'
+    AND t.locale      = current_setting('app.locale', true)
+    AND t.deleted_at IS NULL
+    AND t.status = 1
+WHERE m.deleted_at IS NULL
+  AND m.tenant_id = current_setting('app.tenant_id', true)
+ORDER BY m.sort_order;
+```
+
+**应用层配合**：
+1. **设置语言**：用户登录后 `SET app.locale = 'en-US'`（类似现有 `app.tenant_id` 模式）。
+2. **查询回退**：`COALESCE(翻译.value, 原始字段)`。
+3. **写入翻译**：对 `sys_translation` 表做标准的 CRUD。
+
+---
+
 ## 多租户隔离（RLS）
 
 全部表均启用了 **Row-Level Security**，并配置了租户隔离策略：
@@ -572,6 +643,8 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 | sys_config | `sys_config_key_un` | 部分唯一索引 | 配置键全局唯一 |
 | sys_tenant_config | `sys_tenant_config_key_un` | 部分唯一索引 | 同租户下配置键唯一 |
 | sys_feature_flag | `sys_feature_flag_tenant_key_un` | 部分唯一索引 | 同租户下特性键唯一 |
+| sys_translation | `sys_translation_tenant_un` | 部分唯一索引 | 同来源字段+语言+租户翻译唯一 |
+| sys_translation | `idx_translation_lookup` | 部分索引 | 加速翻译查找，仅含活跃翻译 |
 
 > 多数唯一索引使用 `WHERE deleted_at IS NULL` 部分索引，允许已删除记录重复，同时保证活跃数据唯一。
 
@@ -591,3 +664,4 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 4. **默认值**：`status` 默认 1（启用），`created_at`/`updated_at` 默认当前时间
 5. **追加写入**：日志表（`sys_login_log`、`sys_operation_log`）为 append-only 设计，省略 `updated_by`/`updated_at`/`deleted_at`，由应用层保证只追加不修改
 6. **全局配置**：`sys_config` 为平台级配置，不绑定租户，无 RLS 策略
+7. **国际适配**：`sys_user.locale` 为个人语言偏好，`sys_tenant.default_locale` 为租户默认语言，`sys_translation` 统一管理所有可翻译字段的多语言值

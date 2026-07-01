@@ -7,29 +7,29 @@
 -- 1. 租户表 (sys_tenant)
 -- ===========================
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count, default_locale)
 VALUES ('t-super-01', 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
-        'default', '默认租户', NULL, '系统管理员', '13800000000', NULL, 1000);
+        'default', '默认租户', NULL, '系统管理员', '13800000000', NULL, 1000, 'zh-CN');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count, default_locale)
 VALUES ('t-demo-01', 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
-        'demo', '演示租户', 't-super-01', '演示联系人', '13800000010', NULL, 50);
+        'demo', '演示租户', 't-super-01', '演示联系人', '13800000010', NULL, 50, 'zh-CN');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count, default_locale)
 VALUES ('t-test-01', 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
-        'test', '测试租户', 't-super-01', '测试联系人', '13800000020', NULL, 100);
+        'test', '测试租户', 't-super-01', '测试联系人', '13800000020', NULL, 100, 'zh-CN');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count, default_locale)
 VALUES ('t-dev-01', 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
-        'dev', '开发租户', 't-super-01', '开发联系人', '13800000030', NULL, 200);
+        'dev', '开发租户', 't-super-01', '开发联系人', '13800000030', NULL, 200, 'zh-CN');
 
 INSERT INTO public.sys_tenant (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, code,
-                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count)
+                               "name", parent_id, contact_name, contact_phone, expired_at, max_user_count, default_locale)
 VALUES ('t-stg-01', 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-super-01',
-        'staging', '预发布租户', 't-super-01', '预发布联系人', '13800000040', NULL, 100);
+        'staging', '预发布租户', 't-super-01', '预发布联系人', '13800000040', NULL, 100, 'zh-CN');
 
 
 -- ===========================
@@ -145,43 +145,43 @@ VALUES (1002, 1, 2, 101, 2, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:0
 
 -- 1. admin — 默认租户的系统管理员
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
         1, 1, 'admin', '系统管理员',
         '{scrypt}$e0801$A7n6UaC5UUO/K09rwLa00JQXL5WipLnXHmT/k8xfCDU7Ei3szBiwEPj0O5G/MKznY5Wb3tTkRZLH+IORCt43MQ==$cJKUQc+TRb9KKZSJp+OFn/Yx5p0alwV1G3dFyT2Jf2s=',
-        'admin@example.com', '13800000001', '2026-06-30 08:00:00.000', '超级管理员账号');
+        'admin@example.com', '13800000001', '2026-06-30 08:00:00.000', '超级管理员账号', 'zh-CN');
 
 -- 2. zhangsan — 技术部员工
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (2, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
         1, 2, 'zhangsan', '张三',
         '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
-        'zhangsan@example.com', '13800000002', NULL, '技术部-后端组');
+        'zhangsan@example.com', '13800000002', NULL, '技术部-后端组', 'zh-CN');
 
 -- 3. lisi — 产品部员工
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (3, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
         1, 3, 'lisi', '李四',
         '{scrypt}$e0801$Ztjk9jl3scCFvshR0OgATvTBSUqu5kYn0k803sKHm4GAoF43WujIOnG2x6PFELsSYLaTvHtTrmyCNPrjTX6kqg==$k0B6HCx4+DA4HPqMoxnZ+JDsW8aJBO6ch4G4tIXMGbQ=',
-        'lisi@example.com', '13800000003', NULL, '产品部-产品经理');
+        'lisi@example.com', '13800000003', NULL, '产品部-产品经理', 'zh-CN');
 
 -- 4. wangwu — 设计部员工
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (4, 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
         1, 4, 'wangwu', '王五',
         '{scrypt}$e0801$sMnGKuCundaB6372FYv4Gha7tpPEFQnD2cswbudIfhjRY392rrufnUnUV/NgET+EZ2nmMtpD39cUwNfPNrD8pQ==$F1q7Q6HCv+4vKeX8yKtmDP7sIzGW2D8hTntBnlyZ3fc=',
-        'wangwu@example.com', '13800000004', NULL, '设计部-UI 设计师');
+        'wangwu@example.com', '13800000004', NULL, '设计部-UI 设计师', 'zh-CN');
 
 -- 5. zhaoliu — 演示租户用户
 INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id,
-                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark)
+                             owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (5, 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-demo-01',
         5, 1, 'zhaoliu', '赵六',
         '{scrypt}$e0801$3KDaCR21e9FCbuLRzxiNApLS4M8w5xzu82jgpM+7s9AfPUX8VlhnQauYkQLS9yyTVF0kaZ3K8sVyA/QnKSklLw==$Ptpyytpz0dPZJUWeWkCtGVEjigU9n5HxECEK6CbuJVk=',
-        'zhaoliu@example.com', '13800000005', NULL, '演示租户的普通用户');
+        'zhaoliu@example.com', '13800000005', NULL, '演示租户的普通用户', 'zh-CN');
 
 
 -- ===========================

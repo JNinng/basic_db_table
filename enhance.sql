@@ -1,6 +1,6 @@
 -- ============================================================================
 -- enhance.sql — 业务增强方案
--- 基于 basic.sql 之上，补充功能权限、审计日志、会话管理、系统配置等能力
+-- 基于 basic.sql 之上，补充功能权限、审计日志、会话管理、系统配置、国际适配等能力
 -- 适用 PostgreSQL 15+
 --
 -- 新增表汇总：
@@ -12,6 +12,7 @@
 --   6. sys_config             系统全局配置
 --   7. sys_tenant_config      租户配置
 --   8. sys_feature_flag       功能特性
+--   9. sys_translation        通用翻译表
 --
 -- 设计约定（与 basic.sql 保持一致）：
 --   - 字段排序：id → status → 业务字段 → 审计字段 → tenant_id
@@ -360,6 +361,53 @@ COMMENT ON COLUMN public.sys_feature_flag.tenant_id IS '租户 ID';
 
 
 -- ============================================================================
+-- 7. 国际适配 — 通用翻译表
+--    为 sys_menu.name、sys_dict_data.label、sys_dept.name 等可翻译字段
+--    提供多语言支持。一张表覆盖所有实体，通过 (table_name, row_id, column_name, locale)
+--    唯一确定一条翻译记录。
+-- ============================================================================
+
+-- sys_translation — 通用翻译表
+-- locale 格式：BCP-47 语言标记，如 zh-CN、en-US、ja-JP、ko-KR
+CREATE TABLE public.sys_translation
+(
+    id          int8                                                   NOT NULL,
+    status      int2         DEFAULT 1                                 NOT NULL,
+    table_name  varchar(64)                                            NOT NULL,
+    row_id      int8                                                   NOT NULL,
+    column_name varchar(64)                                            NOT NULL,
+    locale      varchar(10)                                            NOT NULL,
+    value       text                                                   NOT NULL,
+    remark      varchar(512)                                           NULL,
+    created_by  int8                                                   NOT NULL,
+    created_at  timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    updated_by  int8                                                   NOT NULL,
+    updated_at  timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_at  timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    tenant_id   varchar(16)                                            NOT NULL,
+    CONSTRAINT sys_translation_pkey PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX sys_translation_tenant_un ON public.sys_translation USING btree (table_name, row_id, column_name, locale, tenant_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_translation_lookup ON public.sys_translation USING btree (table_name, row_id, column_name, locale) WHERE deleted_at IS NULL AND status = 1;
+COMMENT ON TABLE public.sys_translation IS '通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理';
+
+COMMENT ON COLUMN public.sys_translation.id IS '翻译 ID';
+COMMENT ON COLUMN public.sys_translation.status IS '数据状态，0：禁用、1：启用（可暂未翻译时禁用，前端回退原始值）';
+COMMENT ON COLUMN public.sys_translation.table_name IS '来源表名，如 sys_menu、sys_dict_data、sys_dept';
+COMMENT ON COLUMN public.sys_translation.row_id IS '来源行主键 ID';
+COMMENT ON COLUMN public.sys_translation.column_name IS '来源列名，如 name、label';
+COMMENT ON COLUMN public.sys_translation.locale IS '语言代码（BCP-47），如 zh-CN、en-US、ja-JP';
+COMMENT ON COLUMN public.sys_translation.value IS '翻译文本，对应语言的展示值';
+COMMENT ON COLUMN public.sys_translation.remark IS '备注';
+COMMENT ON COLUMN public.sys_translation.created_by IS '创建人';
+COMMENT ON COLUMN public.sys_translation.created_at IS '创建时间';
+COMMENT ON COLUMN public.sys_translation.updated_by IS '更新人';
+COMMENT ON COLUMN public.sys_translation.updated_at IS '更新时间';
+COMMENT ON COLUMN public.sys_translation.deleted_at IS '删除时间';
+COMMENT ON COLUMN public.sys_translation.tenant_id IS '租户 ID';
+
+
+-- ============================================================================
 -- RLS 策略
 --    每张带 tenant_id 的租户隔离表均需 RLS 策略。
 --    sys_config 为全局配置，无 tenant_id，不启用 RLS。
@@ -397,6 +445,11 @@ CREATE POLICY sys_tenant_config_tenant_isolation ON public.sys_tenant_config
 
 -- 7. sys_feature_flag
 CREATE POLICY sys_feature_flag_tenant_isolation ON public.sys_feature_flag
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- 8. sys_translation
+CREATE POLICY sys_translation_tenant_isolation ON public.sys_translation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
@@ -447,6 +500,12 @@ ALTER TABLE public.sys_feature_flag
 ALTER TABLE public.sys_feature_flag
     FORCE ROW LEVEL SECURITY;
 
+-- 8. sys_translation
+ALTER TABLE public.sys_translation
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_translation
+    FORCE ROW LEVEL SECURITY;
+
 
 -- ============================================================================
 -- 授权
@@ -463,6 +522,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_session TO app_u;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_config TO app_u;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_tenant_config TO app_u;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_feature_flag TO app_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_translation TO app_u;
 
 GRANT USAGE, SELECT ON SEQUENCE public.sys_login_log_id_seq TO app_u;
 GRANT USAGE, SELECT ON SEQUENCE public.sys_operation_log_id_seq TO app_u;

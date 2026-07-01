@@ -292,6 +292,7 @@ CREATE TABLE public.sys_tenant
     contact_phone  varchar(32)                                            NULL,
     expired_at     timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     max_user_count int4                                                   NULL,
+    default_locale varchar(10) DEFAULT 'zh-CN'::character varying         NOT NULL,
     created_by     int8                                                   NOT NULL,
     created_at     timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by     int8                                                   NOT NULL,
@@ -315,6 +316,7 @@ COMMENT ON COLUMN public.sys_tenant.contact_name IS '联系人';
 COMMENT ON COLUMN public.sys_tenant.contact_phone IS '联系电话';
 COMMENT ON COLUMN public.sys_tenant.expired_at IS '到期时间';
 COMMENT ON COLUMN public.sys_tenant.max_user_count IS '最大用户数';
+COMMENT ON COLUMN public.sys_tenant.default_locale IS '租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值';
 COMMENT ON COLUMN public.sys_tenant.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_tenant.created_at IS '创建时间';
 COMMENT ON COLUMN public.sys_tenant.updated_by IS '更新人';
@@ -339,6 +341,7 @@ CREATE TABLE public.sys_user
     email               varchar(256)                                           NULL,
     phone               varchar(32)                                            NULL,
     remark              varchar(512)                                           NULL,
+    locale              varchar(10) DEFAULT 'zh-CN'::character varying         NOT NULL,
     last_login_at       timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     created_by          int8                                                   NOT NULL,
     created_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
@@ -365,6 +368,7 @@ COMMENT ON COLUMN public.sys_user.nickname IS '昵称';
 COMMENT ON COLUMN public.sys_user."password" IS '密码';
 COMMENT ON COLUMN public.sys_user.email IS '邮箱';
 COMMENT ON COLUMN public.sys_user.phone IS '手机号';
+COMMENT ON COLUMN public.sys_user.locale IS '用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言和查询回退优先级';
 COMMENT ON COLUMN public.sys_user.last_login_at IS '最后登录时间';
 COMMENT ON COLUMN public.sys_user.remark IS '备注';
 COMMENT ON COLUMN public.sys_user.created_by IS '创建人';
