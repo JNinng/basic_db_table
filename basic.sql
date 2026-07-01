@@ -90,13 +90,13 @@ BEGIN
     -- ================= 1. 新增部门 =================
     IF (TG_OP = 'INSERT') THEN
         -- 插入自身到自身的路径 (深度0)
-        INSERT INTO sys_dept_closure (ancestor_id, descendant_id, depth)
-        VALUES (NEW.id, NEW.id, 0);
+        INSERT INTO sys_dept_closure (ancestor_id, descendant_id, depth, tenant_id)
+        VALUES (NEW.id, NEW.id, 0, NEW.tenant_id);
 
         -- 如果有父节点，复制父节点的所有祖先关系，并指向新节点（深度+1）
         IF NEW.parent_id IS NOT NULL THEN
-            INSERT INTO sys_dept_closure (ancestor_id, descendant_id, depth)
-            SELECT c.ancestor_id, NEW.id, c.depth + 1
+            INSERT INTO sys_dept_closure (ancestor_id, descendant_id, depth, tenant_id)
+            SELECT c.ancestor_id, NEW.id, c.depth + 1, NEW.tenant_id
             FROM sys_dept_closure c
             WHERE c.descendant_id = NEW.parent_id;
         END IF;
@@ -130,8 +130,8 @@ BEGIN
         -- 步骤 B: 建立新关系
         -- 插入 "新祖先 -> 该节点及其子节点" 的路径
         IF NEW.parent_id IS NOT NULL THEN
-            INSERT INTO sys_dept_closure (ancestor_id, descendant_id, depth)
-            SELECT a.ancestor_id, d.descendant_id, a.depth + d.depth + 1
+            INSERT INTO sys_dept_closure (ancestor_id, descendant_id, depth, tenant_id)
+            SELECT a.ancestor_id, d.descendant_id, a.depth + d.depth + 1, NEW.tenant_id
             FROM sys_dept_closure a -- 新的祖先路径
                      CROSS JOIN sys_dept_closure d -- 当前节点及其子节点的路径
             WHERE a.descendant_id = NEW.parent_id -- 新祖先路径的终点是新父节点
@@ -171,14 +171,15 @@ execute function fn_maintain_dept_closure();
 
 CREATE TABLE public.sys_dept_closure
 (
-    id            bigserial NOT NULL,
-    ancestor_id   int8      NOT NULL,
-    descendant_id int8      NOT NULL,
-    "depth"       int4      NOT NULL,
+    ancestor_id   int8        NOT NULL,
+    descendant_id int8        NOT NULL,
+    "depth"       int4        NOT NULL,
+    tenant_id     varchar(16) NOT NULL,
     CONSTRAINT sys_dept_closure_pkey PRIMARY KEY (ancestor_id, descendant_id)
 );
 CREATE INDEX idx_closure_ancestor ON public.sys_dept_closure USING btree (ancestor_id);
 CREATE INDEX idx_closure_descendant ON public.sys_dept_closure USING btree (descendant_id);
+CREATE INDEX idx_closure_tenant ON public.sys_dept_closure USING btree (tenant_id);
 COMMENT ON TABLE public.sys_dept_closure IS '部门闭包表';
 
 -- Column comments
@@ -186,6 +187,7 @@ COMMENT ON TABLE public.sys_dept_closure IS '部门闭包表';
 COMMENT ON COLUMN public.sys_dept_closure.ancestor_id IS '祖先节点ID';
 COMMENT ON COLUMN public.sys_dept_closure.descendant_id IS '后代节点ID';
 COMMENT ON COLUMN public.sys_dept_closure."depth" IS '深度/距离（0表示自身，1表示直接子节点，2表示孙子节点...）';
+COMMENT ON COLUMN public.sys_dept_closure.tenant_id IS '租户 ID';
 
 
 -- public.sys_role 定义
@@ -577,7 +579,7 @@ CREATE POLICY sys_role_id_scope_tenant_isolation
 -- sys_tenant
 CREATE POLICY sys_tenant_tenant_isolation
     ON public.sys_tenant
-    USING (tenant_id = current_setting('app.tenant_id', true))
+    USING (tenant_id = current_setting('app.tenant_id', true) OR id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
 -- sys_user
@@ -616,6 +618,12 @@ CREATE POLICY sys_dict_data_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
+-- sys_dept_closure
+CREATE POLICY sys_dept_closure_tenant_isolation
+    ON public.sys_dept_closure
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
 ALTER TABLE public.basic
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.basic
@@ -624,6 +632,11 @@ ALTER TABLE public.basic
 ALTER TABLE public.sys_dept
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sys_dept
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_dept_closure
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_dept_closure
     FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.sys_role
