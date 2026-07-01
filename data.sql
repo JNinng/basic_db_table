@@ -95,7 +95,7 @@ VALUES (8, 1, 1, '2026-06-01 10:35:00.000', 1, '2026-06-01 10:35:00.000', NULL, 
 INSERT INTO public.sys_role (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name",
                              code, role_type, data_scope, scope_dept_id, remark)
 VALUES (101, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
-        '超级管理员', 'super_admin', 1, 6, NULL, '系统预置角色，拥有全部数据权限，不可删除');
+        '超级管理员', 'super_admin', 1, 7, NULL, '系统预置角色，拥有全部数据权限，不可删除');
 
 -- 102. 部门管理员（租户自定义，本部门及子部门）
 INSERT INTO public.sys_role (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name",
@@ -113,13 +113,13 @@ VALUES (103, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL
 INSERT INTO public.sys_role (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name",
                              code, role_type, data_scope, scope_dept_id, remark)
 VALUES (104, 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
-        '审计员', 'auditor', 2, 6, NULL, '拥有全租户数据查看权限，用于合规审计');
+        '审计员', 'auditor', 2, 7, NULL, '拥有全租户数据查看权限，用于合规审计');
 
 -- 105. 演示租户管理员（归属演示租户）
 INSERT INTO public.sys_role (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name",
                              code, role_type, data_scope, scope_dept_id, remark)
 VALUES (105, 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-demo-01',
-        '租户管理员', 'tenant_admin', 2, 6, NULL, '演示租户的管理角色');
+        '租户管理员', 'tenant_admin', 2, 7, NULL, '演示租户的管理角色');
 
 
 -- ===========================
