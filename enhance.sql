@@ -52,7 +52,9 @@ CREATE TABLE public.sys_menu
     updated_at      timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at      timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id       varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_menu_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_menu_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_menu_status_chk CHECK (status IN (0, 1)),
+    CONSTRAINT sys_menu_type_chk CHECK (menu_type BETWEEN 1 AND 3)
 );
 CREATE UNIQUE INDEX sys_menu_tenant_code_un ON public.sys_menu USING btree (tenant_id, permission_code) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_menu IS '菜单/权限表，定义系统功能菜单和操作权限的树形结构，通过 sys_role_menu 与角色关联';
@@ -150,8 +152,8 @@ CREATE TABLE public.sys_operation_log
     operation_type varchar(64)                            NOT NULL,
     target_table   varchar(64)                            NULL,
     target_id      varchar(64)                            NULL,
-    old_value      text                                   NULL,
-    new_value      text                                   NULL,
+    old_value      jsonb                                  NULL,
+    new_value      jsonb                                  NULL,
     ip_address     varchar(64)                            NULL,
     user_agent     varchar(512)                           NULL,
     api_path       varchar(512)                           NULL,
@@ -177,8 +179,8 @@ COMMENT ON COLUMN public.sys_operation_log.tenant_id IS '租户 ID';
 COMMENT ON COLUMN public.sys_operation_log.operation_type IS '操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等';
 COMMENT ON COLUMN public.sys_operation_log.target_table IS '操作目标表名';
 COMMENT ON COLUMN public.sys_operation_log.target_id IS '操作目标记录 ID';
-COMMENT ON COLUMN public.sys_operation_log.old_value IS '操作前数据（JSON 格式）';
-COMMENT ON COLUMN public.sys_operation_log.new_value IS '操作后数据（JSON 格式）';
+COMMENT ON COLUMN public.sys_operation_log.old_value IS '操作前数据（jsonb，写入时即校验 JSON 合法性，可索引）';
+COMMENT ON COLUMN public.sys_operation_log.new_value IS '操作后数据（jsonb，可索引）';
 COMMENT ON COLUMN public.sys_operation_log.ip_address IS '请求 IP 地址';
 COMMENT ON COLUMN public.sys_operation_log.user_agent IS '浏览器/客户端 User-Agent';
 COMMENT ON COLUMN public.sys_operation_log.api_path IS 'API 路径';
@@ -217,7 +219,8 @@ CREATE TABLE public.sys_session
     created_at         timestamp(0) DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_by         int8                                   NOT NULL,
     updated_at         timestamp(0) DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT sys_session_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_session_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_session_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_session_token_hash_un ON public.sys_session USING btree (token_hash);
 CREATE UNIQUE INDEX sys_session_refresh_token_hash_un ON public.sys_session USING btree (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL;
@@ -263,7 +266,8 @@ CREATE TABLE public.sys_config
     updated_by int8                                                   NOT NULL,
     updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
-    CONSTRAINT sys_config_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_config_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_config_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_config_key_un ON public.sys_config USING btree (config_key) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_config IS '系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享';
@@ -304,7 +308,8 @@ CREATE TABLE public.sys_tenant_config
     updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id  varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_tenant_config_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_tenant_config_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_tenant_config_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_tenant_config_key_un ON public.sys_tenant_config USING btree (tenant_id, config_key) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_tenant_config IS '租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值';
@@ -346,7 +351,8 @@ CREATE TABLE public.sys_feature_flag
     updated_at  timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at  timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id   varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_feature_flag_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_feature_flag_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_feature_flag_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_feature_flag_tenant_key_un ON public.sys_feature_flag USING btree (tenant_id, flag_key) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_feature_flag IS '功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权';
@@ -391,7 +397,8 @@ CREATE TABLE public.sys_translation
     updated_at  timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at  timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id   varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_translation_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_translation_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_translation_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_translation_tenant_un ON public.sys_translation USING btree (table_name, row_id, column_name, locale, tenant_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_translation_lookup ON public.sys_translation USING btree (table_name, row_id, column_name, locale) WHERE deleted_at IS NULL AND status = 1;
@@ -514,21 +521,55 @@ ALTER TABLE public.sys_translation
 
 
 -- ============================================================================
--- 授权
---    继承 basic.sql 的授权策略：app_u 用户对新表拥有完整 CRUD 权限。
---    bigserial 序列需要单独的 USAGE, SELECT 权限。
---    sys_config 为全局配置，也授予 app_u 读取权限（应用层需要）。
+-- updated_at 自动维护
+--    复用 basic.sql 的 fn_touch_updated_at()，为本文件新增的含 updated_at 表挂载触发器
+--    （重复执行安全）
 -- ============================================================================
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_menu TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_role_menu TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_login_log TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_operation_log TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_session TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_config TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_tenant_config TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_feature_flag TO app_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_translation TO app_u;
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT c.relname AS tbl
+        FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                 JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'updated_at' AND NOT a.attisdropped
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'
+        LOOP
+            EXECUTE format('DROP TRIGGER IF EXISTS trg_touch_updated_at ON public.%I', r.tbl);
+            EXECUTE format('CREATE TRIGGER trg_touch_updated_at BEFORE UPDATE ON public.%I
+                            FOR EACH ROW EXECUTE FUNCTION public.fn_touch_updated_at()', r.tbl);
+        END LOOP;
+END
+$$;
 
-GRANT USAGE, SELECT ON SEQUENCE public.sys_login_log_id_seq TO app_u;
-GRANT USAGE, SELECT ON SEQUENCE public.sys_operation_log_id_seq TO app_u;
+
+-- ============================================================================
+-- 授权
+--    继承 basic.sql 的授权策略：test_u 用户对新表拥有完整 CRUD 权限。
+--    例外（最小权限，防运行时提权）：
+--      - sys_menu：平台预置的权限定义，应用运行时只读。租户开通复制菜单树、
+--        菜单变更走管理端/迁移通道（使用建表角色），不经 test_u
+--      - sys_config：无 RLS 的平台级全局配置（含 session.timeout、
+--        auth.lockout-threshold 等安全参数），应用只读，仅平台管理端可写
+--    bigserial 序列需要单独的 USAGE, SELECT 权限。
+-- ============================================================================
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_role_menu TO test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_login_log TO test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_operation_log TO test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_session TO test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_tenant_config TO test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_feature_flag TO test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sys_translation TO test_u;
+
+-- 只读表：先回收 basic.sql DEFAULT PRIVILEGES 自动授予的写权限，再显式授予 SELECT
+REVOKE INSERT, UPDATE, DELETE ON public.sys_menu FROM test_u;
+REVOKE INSERT, UPDATE, DELETE ON public.sys_config FROM test_u;
+GRANT SELECT ON public.sys_menu TO test_u;
+GRANT SELECT ON public.sys_config TO test_u;
+
+GRANT USAGE, SELECT ON SEQUENCE public.sys_login_log_id_seq TO test_u;
+GRANT USAGE, SELECT ON SEQUENCE public.sys_operation_log_id_seq TO test_u;

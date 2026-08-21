@@ -17,8 +17,13 @@ CREATE TABLE public.basic
     owner_user_id       int8                                                   NULL,
     owner_dept_id       int8                                                   NULL,
     owner_user_group_id int8                                                   NULL,
-    CONSTRAINT sys_basic_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_basic_pkey PRIMARY KEY (id),
+    CONSTRAINT basic_status_chk CHECK (status IN (0, 1))
 );
+-- owner_* 归属索引：data_scope = 2/3/5/6 的行级过滤高频路径
+CREATE INDEX idx_basic_owner_user ON public.basic USING btree (owner_user_id);
+CREATE INDEX idx_basic_owner_dept ON public.basic USING btree (owner_dept_id);
+CREATE INDEX idx_basic_owner_user_group ON public.basic USING btree (owner_user_group_id);
 COMMENT ON TABLE public.basic IS '基础字段示例表';
 
 -- Column comments
@@ -56,7 +61,8 @@ CREATE TABLE public.sys_dept
     tenant_id           varchar(16)                                            NOT NULL,
     owner_user_id       int8                                                   NOT NULL,
     owner_user_group_id int8                                                   NULL,
-    CONSTRAINT sys_dept_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_dept_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_dept_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_dept_tenant_name_un ON public.sys_dept USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_dept IS '部门表';
@@ -265,7 +271,10 @@ CREATE TABLE public.sys_role
     updated_at    timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at    timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id     varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_role_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_role_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_role_status_chk CHECK (status IN (0, 1)),
+    CONSTRAINT sys_role_type_chk CHECK (role_type IN (1, 2)),
+    CONSTRAINT sys_role_data_scope_chk CHECK (data_scope BETWEEN 1 AND 7)
 );
 CREATE UNIQUE INDEX sys_role_tenant_code_un ON public.sys_role USING btree (tenant_id, code) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_role_tenant_name_un ON public.sys_role USING btree (tenant_id, name) WHERE deleted_at IS NULL;
@@ -308,7 +317,9 @@ CREATE TABLE public.sys_role_id_scope
     updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id  varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_sys_role_id_scope_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_role_id_scope_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_role_id_scope_status_chk CHECK (status IN (0, 1)),
+    CONSTRAINT sys_role_id_scope_type_chk CHECK ("type" BETWEEN 1 AND 3)
 );
 CREATE UNIQUE INDEX sys_role_id_scope_tenant_role_type_data_un ON public.sys_role_id_scope USING btree (tenant_id, role_id, type, data_id) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_role_id_scope IS '角色数据 ID 范围表';
@@ -346,7 +357,8 @@ CREATE TABLE public.sys_role_allowed_dept
     updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id  varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_role_allowed_dept_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_role_allowed_dept_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_role_allowed_dept_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_role_allowed_dept_tenant_role_dept_un ON public.sys_role_allowed_dept USING btree (tenant_id, role_id, dept_id) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_role_allowed_dept IS '角色分发部门映射表（sys_role.allowed_dept_ids 集合的落地）。判定规则：角色无映射记录=遵循通用逻辑（scope_dept_id + data_scope 兜底）；有映射=映射分发角色，显式映射优先——角色列表仅对 dept_id 命中的部门管理员可见；分配时命中映射的操作者豁免 data_scope 覆盖校验，但目标用户所属部门必须存在于映射集合中；用户最终数据访问边界仍由角色 data_scope 决定，与分配逻辑解耦';
@@ -389,10 +401,12 @@ CREATE TABLE public.sys_tenant
     updated_at     timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at     timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id      varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_tenant_name_un UNIQUE (name),
     CONSTRAINT sys_tenant_pk PRIMARY KEY (id),
-    CONSTRAINT sys_tenant_un UNIQUE (code)
+    CONSTRAINT sys_tenant_status_chk CHECK (status IN (0, 1))
 );
+-- 软删除后名称/编码可复用：用部分唯一索引替代表级 UNIQUE 约束（与其他表模式一致）
+CREATE UNIQUE INDEX sys_tenant_name_un ON public.sys_tenant USING btree (name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX sys_tenant_code_un ON public.sys_tenant USING btree (code) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_tenant IS '租户表';
 
 -- Column comments
@@ -433,6 +447,8 @@ CREATE TABLE public.sys_user
     remark              varchar(512)                                           NULL,
     locale              varchar(10) DEFAULT 'zh-CN'::character varying         NOT NULL,
     last_login_at       timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    failed_count        int4         DEFAULT 0                                 NOT NULL,
+    locked_until        timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     created_by          int8                                                   NOT NULL,
     created_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     updated_by          int8                                                   NOT NULL,
@@ -442,7 +458,8 @@ CREATE TABLE public.sys_user
     owner_user_id       int8                                                   NULL,
     owner_dept_id       int8                                                   NULL,
     owner_user_group_id int8                                                   NULL,
-    CONSTRAINT sys_user_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_user_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_user_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_user_tenant_name_un ON public.sys_user USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_user_tenant_email_un ON public.sys_user USING btree (tenant_id, email) WHERE deleted_at IS NULL AND email IS NOT NULL;
@@ -460,6 +477,8 @@ COMMENT ON COLUMN public.sys_user.email IS '邮箱';
 COMMENT ON COLUMN public.sys_user.phone IS '手机号';
 COMMENT ON COLUMN public.sys_user.locale IS '用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言和查询回退优先级';
 COMMENT ON COLUMN public.sys_user.last_login_at IS '最后登录时间';
+COMMENT ON COLUMN public.sys_user.failed_count IS '连续密码错误次数，达到 sys_config 的 auth.lockout-threshold 后锁定，登录成功清零（不依赖扫日志统计）';
+COMMENT ON COLUMN public.sys_user.locked_until IS '账号锁定截止时间，NULL 表示未锁定，登录时 CURRENT_TIMESTAMP >= locked_until 视为已解锁';
 COMMENT ON COLUMN public.sys_user.remark IS '备注';
 COMMENT ON COLUMN public.sys_user.created_by IS '创建人';
 COMMENT ON COLUMN public.sys_user.created_at IS '创建时间';
@@ -520,7 +539,8 @@ CREATE TABLE public.sys_user_group
     deleted_at    timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id     varchar(16)                                            NOT NULL,
     owner_user_id int8                                                   NULL,
-    CONSTRAINT sys_user_group_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_user_group_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_user_group_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_user_group_tenant_code_un ON public.sys_user_group USING btree (tenant_id, code) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_user_group_tenant_name_un ON public.sys_user_group USING btree (tenant_id, name) WHERE deleted_at IS NULL;
@@ -589,7 +609,8 @@ CREATE TABLE public.sys_dict_type
     updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id  varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_dict_type_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_dict_type_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_dict_type_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_dict_type_tenant_code_un ON public.sys_dict_type USING btree (tenant_id, code) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_dict_type IS '字典类型表';
@@ -631,9 +652,10 @@ CREATE TABLE public.sys_dict_data
     updated_at   timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at   timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id    varchar(16)                                            NOT NULL,
-    CONSTRAINT sys_dict_data_pkey PRIMARY KEY (id)
+    CONSTRAINT sys_dict_data_pkey PRIMARY KEY (id),
+    CONSTRAINT sys_dict_data_status_chk CHECK (status IN (0, 1))
 );
-CREATE UNIQUE INDEX sys_dict_data_type_value_un ON public.sys_dict_data USING btree (dict_type_id, value) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX sys_dict_data_type_value_un ON public.sys_dict_data USING btree (tenant_id, dict_type_id, value) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_dict_data IS '字典数据表';
 
 -- Column comments
@@ -653,6 +675,42 @@ COMMENT ON COLUMN public.sys_dict_data.updated_at IS '更新时间';
 COMMENT ON COLUMN public.sys_dict_data.deleted_at IS '删除时间';
 COMMENT ON COLUMN public.sys_dict_data.tenant_id IS '租户 ID';
 
+
+-- updated_at 自动维护：UPDATE 时若应用层未显式赋值则兜底刷新
+-- updated_by 承载业务操作者身份，数据库无法获知，仍由应用层/ORM 写入
+CREATE OR REPLACE FUNCTION public.fn_touch_updated_at()
+    RETURNS trigger
+    LANGUAGE plpgsql
+AS
+$function$
+BEGIN
+    IF NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at THEN
+        NEW.updated_at := CURRENT_TIMESTAMP;
+    END IF;
+    RETURN NEW;
+END;
+$function$
+;
+
+-- 为所有含 updated_at 列的表批量挂载 BEFORE UPDATE 触发器（重复执行安全）
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT c.relname AS tbl
+        FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                 JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'updated_at' AND NOT a.attisdropped
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'
+        LOOP
+            EXECUTE format('DROP TRIGGER IF EXISTS trg_touch_updated_at ON public.%I', r.tbl);
+            EXECUTE format('CREATE TRIGGER trg_touch_updated_at BEFORE UPDATE ON public.%I
+                            FOR EACH ROW EXECUTE FUNCTION public.fn_touch_updated_at()', r.tbl);
+        END LOOP;
+END
+$$;
 
 -- basic
 CREATE POLICY basic_tenant_isolation
@@ -689,10 +747,11 @@ CREATE POLICY sys_role_allowed_dept_tenant_isolation
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
 -- sys_tenant
+-- 子租户行挂在父租户 tenant_id 下；USING/WITH CHECK 均允许命中自身 id，保证租户可读写自身行
 CREATE POLICY sys_tenant_tenant_isolation
     ON public.sys_tenant
     USING (tenant_id = current_setting('app.tenant_id', true) OR id = current_setting('app.tenant_id', true))
-    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true) OR id = current_setting('app.tenant_id', true));
 
 -- sys_user
 CREATE POLICY sys_user_tenant_isolation
