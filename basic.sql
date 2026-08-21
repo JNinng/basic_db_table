@@ -419,26 +419,32 @@ COMMENT ON COLUMN public.sys_user.owner_dept_id IS '归属部门 ID';
 COMMENT ON COLUMN public.sys_user.owner_user_group_id IS '归属用户组 ID';
 
 
--- public.user_role_mapping 定义
+-- public.sys_user_role_mapping 定义
 
 -- Drop table
 
--- DROP TABLE public.user_role_mapping;
+-- DROP TABLE public.sys_user_role_mapping;
 
-CREATE TABLE public.user_role_mapping
+CREATE TABLE public.sys_user_role_mapping
 (
-    user_id   int8        NOT NULL,
-    role_id   int8        NOT NULL,
-    tenant_id varchar(16) NOT NULL,
-    CONSTRAINT user_role_mapping_pk PRIMARY KEY (user_id, role_id)
+    user_id    int8                                                   NOT NULL,
+    role_id    int8                                                   NOT NULL,
+    tenant_id  varchar(16)                                            NOT NULL,
+    created_by int8                                                   NOT NULL,
+    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    CONSTRAINT sys_user_role_mapping_pkey PRIMARY KEY (user_id, role_id)
 );
-CREATE INDEX idx_urm_tenant ON public.user_role_mapping USING btree (tenant_id);
+CREATE INDEX idx_surm_tenant ON public.sys_user_role_mapping USING btree (tenant_id);
+CREATE INDEX idx_surm_role_id ON public.sys_user_role_mapping USING btree (role_id);
 
 -- Column comments
 
-COMMENT ON COLUMN public.user_role_mapping.user_id IS '用户 ID';
-COMMENT ON COLUMN public.user_role_mapping.role_id IS '角色 ID';
-COMMENT ON COLUMN public.user_role_mapping.tenant_id IS '租户 ID';
+COMMENT ON TABLE public.sys_user_role_mapping IS '用户-角色映射表。映射行无可变业务字段，解除关联走物理删除，因此仅保留 created_by/created_at 最小审计字段（谁在何时授予），不含 updated_*/deleted_*';
+COMMENT ON COLUMN public.sys_user_role_mapping.user_id IS '用户 ID';
+COMMENT ON COLUMN public.sys_user_role_mapping.role_id IS '角色 ID';
+COMMENT ON COLUMN public.sys_user_role_mapping.tenant_id IS '租户 ID';
+COMMENT ON COLUMN public.sys_user_role_mapping.created_by IS '授予人（创建人），由应用层/ORM 写入';
+COMMENT ON COLUMN public.sys_user_role_mapping.created_at IS '授予时间（创建时间）';
 
 
 -- public.sys_user_group 定义
@@ -491,18 +497,24 @@ COMMENT ON COLUMN public.sys_user_group.owner_user_id IS '组长/归属用户';
 
 CREATE TABLE public.sys_user_group_mapping
 (
-    group_id  int8        NOT NULL,
-    user_id   int8        NOT NULL,
-    tenant_id varchar(16) NOT NULL,
+    group_id   int8                                                   NOT NULL,
+    user_id    int8                                                   NOT NULL,
+    tenant_id  varchar(16)                                            NOT NULL,
+    created_by int8                                                   NOT NULL,
+    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     CONSTRAINT sys_user_group_mapping_pk PRIMARY KEY (group_id, user_id)
 );
 CREATE INDEX idx_sugm_tenant ON public.sys_user_group_mapping USING btree (tenant_id);
+CREATE INDEX idx_sugm_user_id ON public.sys_user_group_mapping USING btree (user_id);
 
 -- Column comments
 
+COMMENT ON TABLE public.sys_user_group_mapping IS '用户组成员映射表。映射行无可变业务字段，移除成员走物理删除，因此仅保留 created_by/created_at 最小审计字段，不含 updated_*/deleted_*';
 COMMENT ON COLUMN public.sys_user_group_mapping.group_id IS '用户组 ID';
 COMMENT ON COLUMN public.sys_user_group_mapping.user_id IS '用户 ID';
 COMMENT ON COLUMN public.sys_user_group_mapping.tenant_id IS '租户 ID';
+COMMENT ON COLUMN public.sys_user_group_mapping.created_by IS '添加人（创建人），由应用层/ORM 写入';
+COMMENT ON COLUMN public.sys_user_group_mapping.created_at IS '添加时间（创建时间）';
 
 
 -- public.sys_dict_type 定义
@@ -641,9 +653,9 @@ CREATE POLICY sys_user_group_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
--- user_role_mapping
-CREATE POLICY user_role_mapping_tenant_isolation
-    ON public.user_role_mapping
+-- sys_user_role_mapping
+CREATE POLICY sys_user_role_mapping_tenant_isolation
+    ON public.sys_user_role_mapping
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
@@ -716,9 +728,9 @@ ALTER TABLE public.sys_user_group
 ALTER TABLE public.sys_user_group
     FORCE ROW LEVEL SECURITY;
 
-ALTER TABLE public.user_role_mapping
+ALTER TABLE public.sys_user_role_mapping
     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_role_mapping
+ALTER TABLE public.sys_user_role_mapping
     FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.sys_user_group_mapping

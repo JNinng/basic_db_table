@@ -1,7 +1,7 @@
 -- ============================================================================
 -- enhance.sql — 业务增强方案
 -- 基于 basic.sql 之上，补充功能权限、审计日志、会话管理、系统配置、国际适配等能力
--- 适用 PostgreSQL 15+
+-- 适用 PostgreSQL 18
 --
 -- 新增表汇总：
 --   1. sys_menu               菜单/权限树
@@ -77,20 +77,26 @@ COMMENT ON COLUMN public.sys_menu.deleted_at IS '删除时间';
 COMMENT ON COLUMN public.sys_menu.tenant_id IS '租户 ID';
 
 -- 1b. sys_role_menu — 角色-菜单映射
+--     映射行无可变业务字段，解除授权走物理删除，
+--     因此仅保留 created_by/created_at 最小审计字段（谁在何时授权），不含 updated_*/deleted_*。
 CREATE TABLE public.sys_role_menu
 (
-    role_id   int8        NOT NULL,
-    menu_id   int8        NOT NULL,
-    tenant_id varchar(16) NOT NULL,
+    role_id    int8                                                   NOT NULL,
+    menu_id    int8                                                   NOT NULL,
+    tenant_id  varchar(16)                                            NOT NULL,
+    created_by int8                                                   NOT NULL,
+    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     CONSTRAINT sys_role_menu_pkey PRIMARY KEY (role_id, menu_id)
 );
 CREATE INDEX idx_srm_tenant ON public.sys_role_menu USING btree (tenant_id);
 CREATE INDEX idx_srm_menu_id ON public.sys_role_menu USING btree (menu_id);
-COMMENT ON TABLE public.sys_role_menu IS '角色-菜单/权限映射表，多对多关联角色与菜单权限点';
+COMMENT ON TABLE public.sys_role_menu IS '角色-菜单/权限映射表，多对多关联角色与菜单权限点。映射行无可变业务字段，解除授权走物理删除，因此仅保留 created_by/created_at 最小审计字段，不含 updated_*/deleted_*';
 
 COMMENT ON COLUMN public.sys_role_menu.role_id IS '角色 ID，关联 sys_role.id';
 COMMENT ON COLUMN public.sys_role_menu.menu_id IS '菜单/权限 ID，关联 sys_menu.id';
 COMMENT ON COLUMN public.sys_role_menu.tenant_id IS '租户 ID';
+COMMENT ON COLUMN public.sys_role_menu.created_by IS '授权人（创建人），由应用层/ORM 写入';
+COMMENT ON COLUMN public.sys_role_menu.created_at IS '授权时间（创建时间）';
 
 
 -- ============================================================================
