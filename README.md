@@ -1,6 +1,6 @@
 # basic-db-table
 
-多租户 RBAC 基础数据库表结构，基于 PostgreSQL，涵盖租户、用户、部门、角色、用户组及它们之间的关联关系，并通过 **RLS（Row-Level Security）** 实现租户级数据隔离。
+多租户 RBAC 基础数据库表结构，基于 PostgreSQL 18，涵盖租户、用户、部门、角色、用户组及它们之间的关联关系，并通过 **RLS（Row-Level Security）** 实现租户级数据隔离。
 
 ## 业务表概览
 
@@ -14,7 +14,7 @@
 | [sys_role_allowed_dept](#sysrolealloweddept) | 角色分发部门映射表 | 角色显式映射到多部门分发，实现角色定义与分发解耦 |
 | [sys_user](#sysuser) | 用户表 | 登录主体，可归属到部门或用户组 |
 | [sys_user_group](#sysusergroup) | 用户组表 | 用户的灵活分组，不依赖于部门树 |
-| [user_role_mapping](#userrolemapping) | 用户-角色映射 | 用户与角色的多对多关联 |
+| [sys_user_role_mapping](#sysuserrolemapping) | 用户-角色映射 | 用户与角色的多对多关联 |
 | [sys_user_group_mapping](#sysusergroupmapping) | 用户组-成员映射 | 用户组成员关系 |
 | [basic](#basic) | 基础字段示例表 | 展示标准字段模板，供新建业务表时参考 |
 | [sys_menu](#sysmenu-1) | 菜单/权限表 | 功能权限树，定义目录/菜单/按钮三级权限点，补全 RBAC 的功能维度 |
@@ -120,7 +120,12 @@
 
 ## 通用审计字段
 
-除 `sys_dept_closure`、映射表外，全部业务表均包含以下审计字段。日志表（`sys_login_log`、`sys_operation_log`）为追加写入（append-only），省略 `updated_by`/`updated_at`/`deleted_at`：
+除 `sys_dept_closure` 外，全部业务表均包含以下审计字段。两类例外：
+
+- **日志表**（`sys_login_log`、`sys_operation_log`）：追加写入（append-only），省略 `updated_by`/`updated_at`/`deleted_at`。
+- **映射表**（`sys_user_role_mapping`、`sys_user_group_mapping`、`sys_role_menu`）：映射行无可变业务字段，解除关联走物理删除，仅保留 `created_by`/`created_at` 最小审计字段（谁在何时授予），由应用层/ORM 写入。
+
+标准审计字段如下：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -128,8 +133,8 @@
 | `tenant_id` | varchar(16) | 所属租户 ID，RLS 隔离依据 |
 | `created_by` | int8 | 创建人 |
 | `created_at` | timestamp | 创建时间 |
-| `updated_by` | int8 | 更新人 |
-| `updated_at` | timestamp | 更新时间 |
+| `updated_by` | int8 | 更新人（应用层/ORM 写入） |
+| `updated_at` | timestamp | 更新时间（`BEFORE UPDATE` 触发器 `trg_touch_updated_at` 自动兜底刷新） |
 | `deleted_at` | timestamp | 软删除时间，NULL 表示未删除 |
 
 ---
@@ -143,12 +148,12 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | varchar(16) | 租户 ID（主键，字符串型） |
-| `code` | varchar(32) | 租户编码（UNIQUE） |
-| `name` | varchar(256) | 租户名（UNIQUE） |
+| `code` | varchar(32) | 租户编码（唯一，排除已删除记录） |
+| `name` | varchar(256) | 租户名（唯一，排除已删除记录） |
 | `parent_id` | varchar(16) | 父级租户 ID（NULL 为根租户） |
 | `default_locale` | varchar(10) | 租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值 |
 
-> 该表自身也受 RLS 保护，遵循"租户隔离"原则。不过根租户的 `tenant_id` 等于自身 `id`，RLS 需要特殊处理（如通过 superuser 或 bypass 策略访问全部租户）。
+> 该表自身也受 RLS 保护。子租户行挂在父租户 `tenant_id` 下（父租户上下文可见并可创建子租户）；策略的 `USING`/`WITH CHECK` 均含 `OR id = current_setting(...)`，保证租户可读写自身行。唯一性用部分唯一索引（`WHERE deleted_at IS NULL`）实现，软删后名称/编码可复用。
 
 ---
 
@@ -166,7 +171,7 @@
 
 **唯一约束**：同一租户下部门名唯一（`sys_dept_tenant_name_un`，排除已删除记录）。
 
-**触发器**：`trg_maintain_dept_closure` 在 INSERT / DELETE / UPDATE OF parent_id 时自动维护闭包表。
+**触发器**：`trg_maintain_dept_closure` 在 INSERT / DELETE / UPDATE OF parent_id, deleted_at 时自动维护闭包表。写入前校验父级（存在、同租户、未删除、非自身、非自身子孙）；软删除等价删除、恢复等价重建；存在未删除子部门时拒绝删除（需自叶向根逐层删除）。
 
 ---
 
@@ -180,11 +185,18 @@
 | `descendant_id` | int8 | 后代节点 ID |
 | `depth` | int4 | 深度：0=自身，1=直接子节点，2=孙子节点… |
 
-**典型查询**：
-- 查某部门所有子部门：`SELECT descendant_id FROM sys_dept_closure WHERE ancestor_id = ? AND depth > 0`
-- 查某部门所有祖先：`SELECT ancestor_id FROM sys_dept_closure WHERE descendant_id = ?`
+**典型查询**（软删除的部门其闭包路径已被触发器移除，业务查询仍建议显式过滤 `deleted_at`）：
+- 查某部门所有子部门：`SELECT d.* FROM sys_dept d JOIN sys_dept_closure c ON c.descendant_id = d.id WHERE c.ancestor_id = ? AND c.depth > 0 AND d.deleted_at IS NULL`
+- 查某部门所有祖先：`SELECT a.* FROM sys_dept a JOIN sys_dept_closure c ON c.ancestor_id = a.id WHERE c.descendant_id = ? AND c.depth > 0 AND a.deleted_at IS NULL`
 
-闭包表由 `fn_maintain_dept_closure()` 触发器函数自动维护，支持部门的**新增**、**删除**、**移动**（修改 parent_id）三种操作，同时防止环的产生。
+闭包表由 `fn_maintain_dept_closure()` 触发器函数自动维护，支持部门的**新增**、**删除**（软删/物理删）、**移动**（修改 parent_id）、**恢复**四种操作：
+
+- **写入校验**：父级必须存在、同租户、未软删；禁止以自身为父；禁止移入自身子树（显式报错，而非依赖主键冲突"意外"拦截）。
+- **删除范围**：仅清理 `{X 的祖先 ∪ X} × {X 的子树}` 的路径，保留子树内部关系——子部门后续移动可正常重建，不会出现"整个子树闭包记录被清空且无法自愈"的数据损坏。
+- **删除守卫**：存在未删除子部门时拒绝删除，需先处理子部门（自叶向根）。
+- **软删一致**：软删除（`UPDATE deleted_at`）走 DELETE 分支移除路径，恢复走 INSERT 分支重建路径，两条删除路径对闭包表行为完全一致。
+
+属于派生数据，可随时从部门树重建，因此不设审计字段（`created_by` 等），审计请看 `sys_dept` 本表。
 
 ---
 
@@ -245,6 +257,8 @@
 
 **唯一约束**：`(tenant_id, role_id, dept_id)`（排除已删除记录）。
 
+**子树语义（明确约定）**：`dept_id` 为**严格部门集合，不自动扩展子树**——命中判定使用精确 `IN` 匹配操作人/目标用户所属部门 ID。若需覆盖子部门，须在映射中显式写入各子孙部门行（可由应用层结合 `sys_dept_closure` 展开生成）。这与 `sys_role.scope_dept_id` 的"该部门及子部门"语义不同，实现时不可混用。
+
 **角色分发映射规则**（判定原则：显式映射优先，通用逻辑兜底）：
 
 1. **角色列表可见性**
@@ -268,7 +282,7 @@
 ```
 用户 A
   ↓
-user_role_mapping → 查出用户 A 的所有角色
+sys_user_role_mapping → 查出用户 A 的所有角色
   ↓
 sys_role.data_scope → 确定数据范围模式（本人/部门/用户组/全租户...）
   ↓
@@ -311,11 +325,20 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 | `password` | text | 密码（加密存储） |
 | `remark` | varchar | 备注 |
 | `locale` | varchar(10) | 用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面语言和翻译回退优先级 |
+| `failed_count` | int4 | 连续密码错误次数，达到 `sys_config` 的 `auth.lockout-threshold` 后锁定，登录成功清零 |
+| `locked_until` | timestamp(0) | 账号锁定截止时间，NULL 表示未锁定；过期即自动解锁 |
 | `owner_user_id` | int8 | 归属用户 ID（如直属上级） |
 | `owner_dept_id` | int8 | 归属部门 ID |
 | `owner_user_group_id` | int8 | 归属用户组 ID |
 
 **唯一约束**：`(tenant_id, name)`（排除已删除记录）。
+
+**登录链路与 RLS 的衔接**（先确定租户再进租户上下文）：
+
+1. 登录请求携带租户编码（或用户名全局唯一时反查），应用层先以**非 RLS 通道**（管理连接或 `SECURITY DEFINER` 函数）校验 `sys_tenant`/`sys_user`，确定 `tenant_id`；
+2. 确定租户后再 `set_config('app.tenant_id', ...)` 进入租户上下文执行后续流程；
+3. 失败登录记录 `sys_login_log`：已知租户用真实 `tenant_id`；未知租户/不存在用户将**请求中的租户标识**原文写入 `tenant_id`（仅作审计留痕，不参与 RLS 业务读取）；
+4. 账号锁定判定用 `failed_count`/`locked_until` 字段（O(1) 读写），不依赖扫描日志统计。
 
 ---
 
@@ -339,15 +362,17 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 ---
 
-### user_role_mapping
+### sys_user_role_mapping
 
-用户与角色的多对多关联表（纯映射，仅有业务键）。
+用户与角色的多对多关联表。映射行无可变业务字段，解除关联走物理删除，因此仅保留 `created_by`/`created_at` 最小审计字段（谁在何时授予），不含 `updated_*`/`deleted_*`。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `user_id` | int8 | 用户 ID |
 | `role_id` | int8 | 角色 ID |
 | `tenant_id` | varchar(16) | 租户 ID |
+| `created_by` | int8 | 授予人（创建人），由应用层/ORM 写入 |
+| `created_at` | timestamp(0) | 授予时间（创建时间），默认 CURRENT_TIMESTAMP |
 
 **主键**：`(user_id, role_id)`
 
@@ -355,13 +380,15 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 ### sys_user_group_mapping
 
-用户与用户组的多对多成员关系表。
+用户与用户组的多对多成员关系表。同 `sys_user_role_mapping`，仅保留 `created_by`/`created_at` 最小审计字段。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `group_id` | int8 | 用户组 ID |
 | `user_id` | int8 | 用户 ID |
 | `tenant_id` | varchar(16) | 租户 ID |
+| `created_by` | int8 | 添加人（创建人），由应用层/ORM 写入 |
+| `created_at` | timestamp(0) | 添加时间（创建时间），默认 CURRENT_TIMESTAMP |
 
 **主键**：`(group_id, user_id)`
 
@@ -406,17 +433,21 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 **唯一约束**：`(tenant_id, permission_code)`（排除已删除记录）。
 
+**租户分发模型**：菜单为**租户数据**（带 `tenant_id` + RLS）。平台维护模板菜单树（`t-super-01` 下的 2xx），租户开通时按需复制所需子树到新租户（新租户使用独立 ID 段，如演示租户的 12xx）。`sys_role_menu` 只能映射本租户拥有的菜单——跨租户映射在 RLS 下 JOIN 不可见，等于无效授权。模板菜单变更走管理端/迁移通道（建表角色），应用连接用户对 `sys_menu` 只读。
+
 ---
 
 ### sys_role_menu
 
-角色与菜单权限的多对多关联（纯映射，仅有业务键）。
+角色与菜单权限的多对多关联。映射行无可变业务字段，解除授权走物理删除，因此仅保留 `created_by`/`created_at` 最小审计字段（谁在何时授权），不含 `updated_*`/`deleted_*`。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `role_id` | int8 | 角色 ID |
 | `menu_id` | int8 | 菜单/权限 ID |
 | `tenant_id` | varchar(16) | 租户 ID |
+| `created_by` | int8 | 授权人（创建人），由应用层/ORM 写入 |
+| `created_at` | timestamp(0) | 授权时间（创建时间），默认 CURRENT_TIMESTAMP |
 
 **主键**：`(role_id, menu_id)`
 
@@ -463,8 +494,8 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 | `operation_type` | varchar(64) | 操作类型：CREATE/UPDATE/DELETE/EXPORT/IMPORT 等 |
 | `target_table` | varchar(64) | 操作目标表名 |
 | `target_id` | varchar(64) | 操作目标记录 ID |
-| `old_value` | text | 操作前数据（JSON） |
-| `new_value` | text | 操作后数据（JSON） |
+| `old_value` | jsonb | 操作前数据（jsonb，写入即校验 JSON 合法性，可索引） |
+| `new_value` | jsonb | 操作后数据（jsonb，可索引） |
 | `ip_address` | varchar(64) | 请求 IP |
 | `api_path` | varchar(512) | API 路径 |
 | `http_method` | varchar(16) | GET/POST/PUT/DELETE |
@@ -590,34 +621,46 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 - **租户隔离**：带 `tenant_id`，与所有业务表一致的 RLS 策略，翻译数据随业务数据隔离。
 - **status 字段**：`status = 0` 可禁用某条翻译，使其回退到下一优先级，无需物理删除。
 
-**典型查询 — 获取用户语言的菜单树**：
+**典型查询 — 获取用户语言的菜单树（三层回退：用户语言 → 租户默认语言 → 原始值）**：
 ```sql
 SELECT
     m.id,
     m.parent_id,
     m.menu_type,
     m.permission_code,
-    COALESCE(t.value, m.name) AS display_name,  -- 有翻译用翻译，否则回退原始值
+    COALESCE(t_user.value, t_tenant.value, m.name) AS display_name,  -- 用户语言 → 租户默认 → 原始值
     m.route_path,
     m.icon,
     m.sort_order
 FROM sys_menu m
-LEFT JOIN sys_translation t
-    ON  t.table_name  = 'sys_menu'
-    AND t.row_id      = m.id
-    AND t.column_name = 'name'
-    AND t.locale      = current_setting('app.locale', true)
-    AND t.deleted_at IS NULL
-    AND t.status = 1
+-- 第一层：用户语言偏好
+LEFT JOIN sys_translation t_user
+    ON  t_user.table_name  = 'sys_menu'
+    AND t_user.row_id      = m.id
+    AND t_user.column_name = 'name'
+    AND t_user.locale      = current_setting('app.locale', true)
+    AND t_user.deleted_at IS NULL
+    AND t_user.status = 1
+-- 第二层：租户默认语言（未命中用户语言时回退）
+LEFT JOIN sys_translation t_tenant
+    ON  t_tenant.table_name  = 'sys_menu'
+    AND t_tenant.row_id      = m.id
+    AND t_tenant.column_name = 'name'
+    AND t_tenant.locale      = (SELECT default_locale FROM sys_tenant
+                                WHERE id = current_setting('app.tenant_id', true))
+    AND t_tenant.deleted_at IS NULL
+    AND t_tenant.status = 1
 WHERE m.deleted_at IS NULL
   AND m.tenant_id = current_setting('app.tenant_id', true)
 ORDER BY m.sort_order;
 ```
 
 **应用层配合**：
-1. **设置语言**：用户登录后 `SET app.locale = 'en-US'`（类似现有 `app.tenant_id` 模式）。
-2. **查询回退**：`COALESCE(翻译.value, 原始字段)`。
+1. **设置语言**：每事务开头 `SELECT set_config('app.locale', 'en-US', true)`（与 `app.tenant_id` 同为事务级）。
+2. **查询回退**：`COALESCE(用户语言翻译, 租户默认语言翻译, 原始字段)`，见上方三层回退示例。
 3. **写入翻译**：对 `sys_translation` 表做标准的 CRUD。
+
+> `sys_translation.row_id` 为 int8，覆盖 int8 主键的表；`sys_tenant` 等 varchar 主键表不在翻译范围内（已知限制，见文末"已知限制与演进方向"）。
 
 ---
 
@@ -634,7 +677,19 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 - **USING**：查询/更新/删除时，仅返回当前租户的数据
 - **WITH CHECK**：插入/更新时，强制写入当前租户 ID
 
-应用层需要在会话中设置 `app.tenant_id` 参数，数据库用户 `app_u` 已被授予对该参数的 SET 权限。
+**租户上下文必须绑定到事务，而非会话**。连接池复用连接时，会话级 `SET` 的残留值是跨租户泄露的头号来源（事务 B 忘记重新 SET 即继承事务 A 的租户）。应用层约定：
+
+```sql
+-- 每个事务的第一条语句（第三个参数 true = 事务级，COMMIT/ROLLBACK 自动失效）
+SELECT set_config('app.tenant_id', $tenantId, true);
+-- 或等价的 SQL 级 SET LOCAL（同样仅事务内有效）
+SET LOCAL app.tenant_id = 't-demo-01';
+```
+
+- 未设置时 `current_setting('app.tenant_id', true)` 返回 NULL，所有策略评估为假 → **默认拒绝**（fail-safe）；
+- 禁止使用会话级 `SET app.tenant_id`；
+- `GRANT SET ON PARAMETER` 为 PG15+ 语法，本方案面向 PostgreSQL 18；
+- 数据库用户 `test_u` 已被授予对该参数的 SET 权限。
 
 ---
 
@@ -642,7 +697,14 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 
 | 用户 | 用途 | 权限 |
 |------|------|------|
-| `app_u` | 应用连接用户 | public schema 全部表的 SELECT/INSERT/UPDATE/DELETE，全部序列的 USAGE/SELECT，`app.tenant_id` 参数的 SET 权限 |
+| `test_u` | 测试连接用户（仅用于测试，密码写在脚本中仅供本地环境） | public schema 业务表 SELECT/INSERT/UPDATE/DELETE（例外：`sys_menu`、`sys_config` 只读），全部序列的 USAGE/SELECT，`app.tenant_id` 参数的 SET 权限 |
+
+**最小权限例外**（防运行时提权）：
+
+- `sys_menu`：权限体系定义本身。若应用可写，低权限会话可把高权限编码挂到任意层级 → 只读；变更走管理端/迁移通道；
+- `sys_config`：无 RLS 的平台级全局配置（含 `session.timeout`、`auth.lockout-threshold` 等安全参数），任何租户的连接都能改 → 只读，仅平台管理端可写；
+- `sys_role`/`sys_role_menu` 保持可写（角色管理是运行时功能），如需进一步隔离建议管理端使用独立数据库角色；
+- public schema 已 `REVOKE CREATE ... FROM PUBLIC`，`ALTER DEFAULT PRIVILEGES` 显式 `FOR ROLE CURRENT_USER`——其他角色所建新表不会自动授权给 `test_u`。
 
 ---
 
@@ -650,6 +712,8 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 
 | 表 | 索引 | 类型 | 用途 |
 |----|------|------|------|
+| sys_tenant | `sys_tenant_name_un` | 部分唯一索引 | 租户名唯一，排除已删除（软删后可复用） |
+| sys_tenant | `sys_tenant_code_un` | 部分唯一索引 | 租户编码唯一，排除已删除 |
 | sys_dept | `sys_dept_tenant_name_un` | 部分唯一索引 | 同租户下部门名唯一，排除已删除 |
 | sys_role | `sys_role_tenant_code_un` | 部分唯一索引 | 同租户下角色编码唯一 |
 | sys_role | `sys_role_tenant_name_un` | 部分唯一索引 | 同租户下角色名唯一 |
@@ -660,8 +724,14 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 | sys_user_group | `sys_user_group_tenant_name_un` | 部分唯一索引 | 同租户下组名唯一 |
 | sys_dept_closure | `idx_closure_ancestor` | B-tree | 加速祖先→后代查询 |
 | sys_dept_closure | `idx_closure_descendant` | B-tree | 加速后代→祖先查询 |
-| user_role_mapping | `idx_urm_tenant` | B-tree | 加速按租户查询 |
+| basic | `idx_basic_owner_user` | B-tree | data_scope=4 按 `owner_user_id` 过滤 |
+| basic | `idx_basic_owner_dept` | B-tree | data_scope=2/3/5 按 `owner_dept_id` 过滤 |
+| basic | `idx_basic_owner_user_group` | B-tree | data_scope=6 按 `owner_user_group_id` 过滤 |
+| sys_user_role_mapping | `idx_surm_tenant` | B-tree | 加速按租户查询 |
+| sys_user_role_mapping | `idx_surm_role_id` | B-tree | 禁用/删除角色时反查受影响用户 |
 | sys_user_group_mapping | `idx_sugm_tenant` | B-tree | 加速按租户查询 |
+| sys_user_group_mapping | `idx_sugm_user_id` | B-tree | 用户→所属组高频路径（data_scope=6） |
+| sys_dict_data | `sys_dict_data_type_value_un` | 部分唯一索引 | 同租户下同字典类型值唯一 |
 | sys_menu | `sys_menu_tenant_code_un` | 部分唯一索引 | 同租户下权限编码唯一 |
 | sys_role_menu | `idx_srm_tenant` | B-tree | 加速按租户查询 |
 | sys_role_menu | `idx_srm_menu_id` | B-tree | 加速按菜单 ID 反向查询 |
@@ -696,5 +766,21 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 3. **时间戳**：统一使用 `timestamp(0)`（秒级精度）
 4. **默认值**：`status` 默认 1（启用），`created_at`/`updated_at` 默认当前时间
 5. **追加写入**：日志表（`sys_login_log`、`sys_operation_log`）为 append-only 设计，省略 `updated_by`/`updated_at`/`deleted_at`，由应用层保证只追加不修改
-6. **全局配置**：`sys_config` 为平台级配置，不绑定租户，无 RLS 策略
+6. **全局配置**：`sys_config` 为平台级配置，不绑定租户，无 RLS 策略，应用连接只读
 7. **国际适配**：`sys_user.locale` 为个人语言偏好，`sys_tenant.default_locale` 为租户默认语言，`sys_translation` 统一管理所有可翻译字段的多语言值
+8. **枚举校验**：`status`（0/1）、`role_type`（1/2）、`data_scope`（1-7）、`type`（1-3）、`menu_type`（1-3）等枚举字段均有 CHECK 约束，非法值在写入时即报错
+9. **updated_at 兜底**：所有含 `updated_at` 的表挂载 `trg_touch_updated_at` 触发器，UPDATE 未显式赋值时自动刷新；`updated_by` 承载业务身份由应用层写入
+10. **权限编码命名**：`:` 分隔层级，多词段用连字符（`sys:user:reset-pwd`、`sys:audit:operation-log`）
+11. **种子幂等**：`data.sql`/`data_enhance.sql` 所有 INSERT 带 `ON CONFLICT DO NOTHING`，可重复执行
+
+---
+
+## 已知限制与演进方向
+
+以下为审计确认但本轮暂缓的项，落地前需评估迁移成本：
+
+1. **timestamp 无时区**：全库 `timestamp(0)`。多时区租户场景建议迁移 `timestamptz`，属于破坏性变更，需与应用层一并评估；
+2. **日志表无分区**：`sys_login_log`/`sys_operation_log` 无限增长，生产环境建议按月分区 + 归档策略（建表时确定分区键，后改成本高）；
+3. **无乐观锁**：全库无 `version` 字段，并发覆盖风险由应用层承担；若引入需同步 ORM 与全部更新语句；
+4. **sys_translation.row_id 为 int8**：无法覆盖 `sys_tenant`（varchar 主键）等字符串主键表，如需覆盖需改 `varchar` 并迁移存量；
+5. **sys_role_allowed_dept 业务规则**：分配豁免、可见性等规则全部承载在注释/文档层，DB 无约束保障，应用层需配套集成测试覆盖判定规则。
