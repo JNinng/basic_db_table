@@ -139,6 +139,23 @@ VALUES (1002, 1, 2, 101, 2, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:0
 
 
 -- ===========================
+-- 4.1 角色分发部门映射表 (sys_role_allowed_dept)
+--     示例：总部下发"部门管理员"角色到指定部门，
+--     命中映射的部门管理员可豁免权限校验直接分配
+-- ===========================
+
+-- 部门管理员角色可由部门 2（技术部）的管理员分发
+INSERT INTO public.sys_role_allowed_dept (id, status, role_id, dept_id, created_by, created_at, updated_by,
+                                          updated_at, deleted_at, tenant_id)
+VALUES (1101, 1, 102, 2, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01');
+
+-- 部门管理员角色可由部门 5（市场部）的管理员分发
+INSERT INTO public.sys_role_allowed_dept (id, status, role_id, dept_id, created_by, created_at, updated_by,
+                                          updated_at, deleted_at, tenant_id)
+VALUES (1102, 1, 102, 5, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01');
+
+
+-- ===========================
 -- 5. 用户表 (sys_user)
 --    密码统一为 "123456"
 -- ===========================

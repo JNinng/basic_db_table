@@ -275,6 +275,43 @@ COMMENT ON COLUMN public.sys_role_id_scope.deleted_at IS '删除时间';
 COMMENT ON COLUMN public.sys_role_id_scope.tenant_id IS '租户 ID';
 
 
+-- public.sys_role_allowed_dept 定义
+
+-- Drop table
+
+-- DROP TABLE public.sys_role_allowed_dept;
+
+CREATE TABLE public.sys_role_allowed_dept
+(
+    id         int8                                                   NOT NULL,
+    status     int2         DEFAULT 1                                 NOT NULL,
+    role_id    int8                                                   NOT NULL,
+    dept_id    int8                                                   NOT NULL,
+    created_by int8                                                   NOT NULL,
+    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    updated_by int8                                                   NOT NULL,
+    updated_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    tenant_id  varchar(16)                                            NOT NULL,
+    CONSTRAINT sys_role_allowed_dept_pkey PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX sys_role_allowed_dept_tenant_role_dept_un ON public.sys_role_allowed_dept USING btree (tenant_id, role_id, dept_id) WHERE deleted_at IS NULL;
+COMMENT ON TABLE public.sys_role_allowed_dept IS '角色分发部门映射表（sys_role.allowed_dept_ids 集合的落地）。判定规则：角色无映射记录=遵循通用逻辑（scope_dept_id + data_scope 兜底）；有映射=映射分发角色，显式映射优先——角色列表仅对 dept_id 命中的部门管理员可见；分配时命中映射的操作者豁免 data_scope 覆盖校验，但目标用户所属部门必须存在于映射集合中；用户最终数据访问边界仍由角色 data_scope 决定，与分配逻辑解耦';
+
+-- Column comments
+
+COMMENT ON COLUMN public.sys_role_allowed_dept.id IS '主键 ID';
+COMMENT ON COLUMN public.sys_role_allowed_dept.status IS '数据状态，0：禁用、1：启用';
+COMMENT ON COLUMN public.sys_role_allowed_dept.role_id IS '角色 ID';
+COMMENT ON COLUMN public.sys_role_allowed_dept.dept_id IS '允许分配该角色的部门 ID（映射分发范围）';
+COMMENT ON COLUMN public.sys_role_allowed_dept.created_by IS '创建人';
+COMMENT ON COLUMN public.sys_role_allowed_dept.created_at IS '创建时间';
+COMMENT ON COLUMN public.sys_role_allowed_dept.updated_by IS '更新人';
+COMMENT ON COLUMN public.sys_role_allowed_dept.updated_at IS '更新时间';
+COMMENT ON COLUMN public.sys_role_allowed_dept.deleted_at IS '删除时间';
+COMMENT ON COLUMN public.sys_role_allowed_dept.tenant_id IS '租户 ID';
+
+
 -- public.sys_tenant 定义
 
 -- Drop table
@@ -580,6 +617,12 @@ CREATE POLICY sys_role_id_scope_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
+-- sys_role_allowed_dept
+CREATE POLICY sys_role_allowed_dept_tenant_isolation
+    ON public.sys_role_allowed_dept
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
 -- sys_tenant
 CREATE POLICY sys_tenant_tenant_isolation
     ON public.sys_tenant
@@ -651,6 +694,11 @@ ALTER TABLE public.sys_role
 ALTER TABLE public.sys_role_id_scope
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sys_role_id_scope
+    FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.sys_role_allowed_dept
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_role_allowed_dept
     FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.sys_tenant

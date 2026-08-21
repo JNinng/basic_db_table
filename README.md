@@ -11,6 +11,7 @@
 | [sys_dept_closure](#sysdeptclosure) | 部门闭包表 | 物化部门树的祖先-后代关系，支持 O(1) 子树/祖先查询 |
 | [sys_role](#sysrole) | 角色表 | 权限载体，绑定数据范围规则与可见范围 |
 | [sys_role_id_scope](#sysroleidscope) | 角色数据 ID 范围表 | 精细化控制角色能访问的指定用户/部门/用户组 |
+| [sys_role_allowed_dept](#sysrolealloweddept) | 角色分发部门映射表 | 角色显式映射到多部门分发，实现角色定义与分发解耦 |
 | [sys_user](#sysuser) | 用户表 | 登录主体，可归属到部门或用户组 |
 | [sys_user_group](#sysusergroup) | 用户组表 | 用户的灵活分组，不依赖于部门树 |
 | [user_role_mapping](#userrolemapping) | 用户-角色映射 | 用户与角色的多对多关联 |
@@ -56,10 +57,13 @@
             │                   │ data_id (当 type=1 用户ID)
             └───────────────────┤
                                 │
-                   ┌────────────┴──────┐
-                   │ sys_role_id_scope │
-                   │ (角色数据范围)      │
-                   └───────────────────┘
+                   ┌────────────┴──────┐      dept_id（分发映射）
+                   │ sys_role_id_scope │─────────────┐
+                   │ (角色数据范围)      │             ▼
+                   └───────────────────┘   ┌───────────────────────┐
+                                           │ sys_role_allowed_dept │
+                                           │ (角色分发部门映射)       │
+                                           └───────────────────────┘
 ```
 
 ### 业务增强模块（enhance.sql）
@@ -226,6 +230,34 @@
 | `data_id` | int8 | 数据 ID |
 
 **唯一约束**：`(tenant_id, role_id, type, data_id)`（排除已删除记录）。
+
+---
+
+### sys_role_allowed_dept
+
+角色分发部门映射表，落地 `sys_role` 的 `allowed_dept_ids` 集合语义，实现"角色定义"与"角色分发"解耦：总部定义角色能力模板，各业务线在映射范围内进行人员分配。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | int8 | 主键 |
+| `role_id` | int8 | 角色 ID |
+| `dept_id` | int8 | 允许分配该角色的部门 ID（映射分发范围） |
+
+**唯一约束**：`(tenant_id, role_id, dept_id)`（排除已删除记录）。
+
+**角色分发映射规则**（判定原则：显式映射优先，通用逻辑兜底）：
+
+1. **角色列表可见性**
+   - 规则 A（显式映射命中）：角色的 `allowed_dept_ids` 包含操作人所属部门 ID → 可见，直接返回，无需后续通用校验。
+   - 规则 B（通用范围校验，兜底）：`scope_dept_id` 为 NULL（全租户）需操作人具备全局角色查看权限；为具体部门时需操作人部门在该部门子树内。
+2. **角色分配授权**
+   - 约束 1（映射来源豁免）：操作人部门 ∈ 目标角色 `allowed_dept_ids` → 豁免"操作人 data_scope ≥ 角色数据范围"的校验；但目标用户所属部门必须存在于 `allowed_dept_ids` 中，防止跨部门乱分。
+   - 约束 2（通用范围校验，兜底）：未命中约束 1 时严格执行原有规范——操作人 data_scope 覆盖角色数据范围，scope_dept_id 覆盖角色分配范围。
+3. **最终生效权限**：用户数据访问边界直接取其角色的 `data_scope` 最大值（或并集），不受分配者权限影响。
+
+**场景示例**：总部创建"标准客服"角色，`allowed_dept_ids = [北京分公司, 上海分公司]`，`data_scope = 2`（本部门）。北京 HR 命中规则 A 可见该角色，分配时命中约束 1 豁免权限拦截，且仅能分给北京分公司员工；深圳 HR 未命中映射，角色不可见。
+
+> **边界与注意事项**：`allowed_dept_ids` 需随组织架构变动手动维护（如新增子公司需手动加入）；本方案放宽了"谁能分"的限制，必须严控"角色本身能做什么"，建议全局角色下发时将 `data_scope` 设为 2（本部门）等相对范围，防止分配不当导致数据越权。
 
 ---
 
@@ -622,6 +654,7 @@ CREATE POLICY <table>_tenant_isolation ON public.<table>
 | sys_role | `sys_role_tenant_code_un` | 部分唯一索引 | 同租户下角色编码唯一 |
 | sys_role | `sys_role_tenant_name_un` | 部分唯一索引 | 同租户下角色名唯一 |
 | sys_role_id_scope | `sys_role_id_scope_tenant_role_type_data_un` | 部分唯一索引 | 防重复分配 |
+| sys_role_allowed_dept | `sys_role_allowed_dept_tenant_role_dept_un` | 部分唯一索引 | 防重复映射 |
 | sys_user | `sys_user_tenant_name_un` | 部分唯一索引 | 同租户下用户名唯一 |
 | sys_user_group | `sys_user_group_tenant_code_un` | 部分唯一索引 | 同租户下组编码唯一 |
 | sys_user_group | `sys_user_group_tenant_name_un` | 部分唯一索引 | 同租户下组名唯一 |
