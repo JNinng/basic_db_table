@@ -860,33 +860,44 @@ ALTER TABLE public.sys_dict_data
 ALTER TABLE public.sys_dict_data
     FORCE ROW LEVEL SECURITY;
 
--- 1. 创建用户
-CREATE USER app_u WITH PASSWORD 'app_u_pwd';
+-- 1. 创建用户（仅用于测试；角色为集群级对象，删库重建时已存在，做幂等守护）
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'test_u') THEN
+        CREATE USER test_u WITH PASSWORD 'test_u_pwd';
+    END IF;
+END
+$$;
 
--- 2. 授予登录权限
-ALTER USER app_u WITH LOGIN;
+-- 2. 授予登录权限（幂等）
+ALTER USER test_u WITH LOGIN;
 
 -- 3. 授予数据库级别权限
-GRANT CONNECT ON DATABASE orm_test TO app_u;
+GRANT CONNECT ON DATABASE orm_test TO test_u;
 
-GRANT USAGE ON SCHEMA public TO app_u;
+GRANT USAGE ON SCHEMA public TO test_u;
 
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public
-    TO app_u;
+    TO test_u;
 
 GRANT USAGE, SELECT
     ON ALL SEQUENCES IN SCHEMA public
-    TO app_u;
+    TO test_u;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
+-- 显式禁止任意用户在 public schema 创建对象（PG15+ 默认已移除 PUBLIC 的 CREATE，此处声明兜底）
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- DEFAULT PRIVILEGES 显式限定 FOR ROLE：仅本脚本执行角色（建表角色）所建对象自动授权，
+-- 其他角色所建表不自动放行，需要时另行显式 GRANT
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE
     ON TABLES
-    TO app_u;
+    TO test_u;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
     GRANT USAGE, SELECT
     ON SEQUENCES
-    TO app_u;
+    TO test_u;
 
-GRANT SET ON PARAMETER app.tenant_id TO app_u;
+GRANT SET ON PARAMETER app.tenant_id TO test_u;
