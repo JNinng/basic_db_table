@@ -317,7 +317,7 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 ### 权限过滤函数（fun.sql）
 
-将上述查询链路封装为三个可直接用于过滤的函数，业务方无需手写权限子查询。函数为 `SECURITY INVOKER + STABLE`，内部查询自动受 RLS 租户隔离，**调用前需 `SET app.tenant_id`**。命名与 [sqlc_zero_prj](https://github.com/JNinng/sqlc_zero_prj) 的 `sqlcpg/rls.sql` 三件套保持同名同构。
+将上述查询链路封装为三个可直接用于过滤的函数，业务方无需手写权限子查询。函数为 `SECURITY INVOKER + STABLE`，内部查询自动受 RLS 租户隔离，**调用前需 `SET app.tenant_id`**。
 
 | 函数 | 返回 | 用途 |
 |------|------|------|
