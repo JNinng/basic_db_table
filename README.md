@@ -271,6 +271,8 @@
 
 **场景示例**：总部创建"标准客服"角色，`allowed_dept_ids = [北京分公司, 上海分公司]`，`data_scope = 2`（本部门）。北京 HR 命中规则 A 可见该角色，分配时命中约束 1 豁免权限拦截，且仅能分给北京分公司员工；深圳 HR 未命中映射，角色不可见。
 
+> **写入侧参考实现**：上述分配判定（约束 1/2 + 目标部门限制）的可执行版本见消费方项目 sqlc_zero_prj 的 `sqlcpg/operate.sql → fn_can_assign_role(操作者, 角色, 目标用户)`，写入前判断、同事务先检后写。
+
 > **边界与注意事项**：`allowed_dept_ids` 需随组织架构变动手动维护（如新增子公司需手动加入）；本方案放宽了"谁能分"的限制，必须严控"角色本身能做什么"，建议全局角色下发时将 `data_scope` 设为 2（本部门）等相对范围，防止分配不当导致数据越权。
 
 ---
@@ -310,6 +312,59 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 ```
 
 > **部门 vs 用户组**：部门基于树形组织架构（`parent_id` + 闭包表），适合正式汇报关系；用户组是扁平的灵活分组，适合跨部门项目协作。两者可同时作用于同一张表。
+
+---
+
+### 权限过滤函数（fun.sql）
+
+将上述查询链路封装为三个可直接用于过滤的函数，业务方无需手写权限子查询。函数为 `SECURITY INVOKER + STABLE`，内部查询自动受 RLS 租户隔离，**调用前需 `SET app.tenant_id`**。命名与消费方项目（sqlc_zero_prj）保持同名同构。
+
+| 函数 | 返回 | 用途 |
+|------|------|------|
+| `fn_accessible_user_ids(p_user_id)` | int8[] | 有权访问的用户 ID 集合，用于 `owner_user_id` 过滤 |
+| `fn_accessible_dept_ids(p_user_id)` | int8[] | 有权访问的部门 ID 集合，用于 `owner_dept_id` 过滤 |
+| `fn_accessible_group_ids(p_user_id)` | int8[] | 有权访问的用户组 ID 集合，用于 `owner_user_group_id` 过滤 |
+
+**返回值三态契约（NULL=全租户）**：
+
+- `NULL`：不受限（任一有效角色 `data_scope=7` 全租户），业务方无需附加过滤
+- `'{}'`：拒绝一切（用户不存在/禁用/删除，或无任何有效角色）
+- 数组：可见 ID 集合，**多角色取并集去重**
+
+**纪律**：NULL 只允许出现在 data_scope=7 的分支——过滤谓词把 NULL 当"放行"语义，其余分支误返回 NULL 会放开整张表。
+
+**data_scope 分支映射**：
+
+| data_scope | fn_accessible_user_ids | fn_accessible_dept_ids | fn_accessible_group_ids |
+|------------|------------------|------------------|------------------|
+| 1 仅本人 | `{本人}` | `{本人归属部门}` | `{}` |
+| 2 本部门 | 本部门有效用户 | `{本部门}` | `{}` |
+| 3 部门及子部门 | 子树内有效用户 | 闭包子树部门 | `{}` |
+| 4 指定人 | 指定的有效用户 | 指定用户归属部门 | `{}` |
+| 5 指定部门 | 指定部门内有效用户 | 指定的有效部门 | `{}` |
+| 6 用户组 | 有效组内有效成员 | 组内成员归属部门 | 角色指定的有效用户组 |
+| 7 全租户 | `NULL`（不受限） | `NULL`（不受限） | `NULL`（不受限） |
+
+**有效性判定**（贯穿所有分支）：本人须启用未删除；角色须启用未删除（`sys_user_role_mapping` 为物理删除表，无状态位）；`sys_role_id_scope` 须启用未删除；目标用户/部门/用户组均须启用未删除。
+
+**使用示例**：
+
+```sql
+-- 用户维度过滤（LATERAL 只求值一次，推荐）
+SELECT t.*
+FROM biz t
+CROSS JOIN LATERAL fn_accessible_user_ids(:uid) AS p(uids)
+WHERE p.uids IS NULL OR t.owner_user_id = ANY(p.uids);
+
+-- 部门维度过滤（简写，STABLE 保证两次求值一致）
+SELECT * FROM biz
+WHERE fn_accessible_dept_ids(:uid) IS NULL
+   OR owner_dept_id = ANY(fn_accessible_dept_ids(:uid));
+
+-- IN 写法等价替代
+SELECT * FROM biz
+WHERE owner_dept_id IN (SELECT unnest(fn_accessible_dept_ids(:uid)));
+```
 
 ---
 
