@@ -53,9 +53,9 @@
 --   SELECT * FROM biz
 --   WHERE owner_dept_id IN (SELECT unnest(public.fn_accessible_dept_ids(:uid)));
 --
--- 命名说明：与消费方项目 sqlc_zero_prj
+-- 命名说明：与 sqlc_zero_prj
 -- （https://github.com/JNinng/sqlc_zero_prj ，其 sqlcpg/rls.sql 为同源实现）
--- 同名同构，模板与消费侧共用一套形态，避免同名异义漂移。
+-- 同名同构，共用一套形态，避免同名异义漂移。
 -- ============================================================
 
 

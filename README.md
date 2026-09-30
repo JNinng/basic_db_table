@@ -271,7 +271,7 @@
 
 **场景示例**：总部创建"标准客服"角色，`allowed_dept_ids = [北京分公司, 上海分公司]`，`data_scope = 2`（本部门）。北京 HR 命中规则 A 可见该角色，分配时命中约束 1 豁免权限拦截，且仅能分给北京分公司员工；深圳 HR 未命中映射，角色不可见。
 
-> **写入侧参考实现**：上述分配判定（约束 1/2 + 目标部门限制）的可执行版本见消费方项目 [sqlc_zero_prj](https://github.com/JNinng/sqlc_zero_prj) 的 [`fn_can_assign_role(操作者, 角色, 目标用户)`](https://github.com/JNinng/sqlc_zero_prj/blob/master/sqlcpg/operate.sql)，写入前判断、同事务先检后写。
+> **写入侧参考实现**：上述分配判定（约束 1/2 + 目标部门限制）的可执行版本见 [sqlc_zero_prj](https://github.com/JNinng/sqlc_zero_prj) 的 [`fn_can_assign_role(操作者, 角色, 目标用户)`](https://github.com/JNinng/sqlc_zero_prj/blob/master/sqlcpg/operate.sql)，写入前判断、同事务先检后写。
 
 > **边界与注意事项**：`allowed_dept_ids` 需随组织架构变动手动维护（如新增子公司需手动加入）；本方案放宽了"谁能分"的限制，必须严控"角色本身能做什么"，建议全局角色下发时将 `data_scope` 设为 2（本部门）等相对范围，防止分配不当导致数据越权。
 
@@ -317,7 +317,7 @@ sys_role_id_scope → data_scope 为 4/5/6 时，查出具体可见的
 
 ### 权限过滤函数（fun.sql）
 
-将上述查询链路封装为三个可直接用于过滤的函数，业务方无需手写权限子查询。函数为 `SECURITY INVOKER + STABLE`，内部查询自动受 RLS 租户隔离，**调用前需 `SET app.tenant_id`**。命名与消费方项目 [sqlc_zero_prj](https://github.com/JNinng/sqlc_zero_prj)（`sqlcpg/rls.sql` 三件套）保持同名同构。
+将上述查询链路封装为三个可直接用于过滤的函数，业务方无需手写权限子查询。函数为 `SECURITY INVOKER + STABLE`，内部查询自动受 RLS 租户隔离，**调用前需 `SET app.tenant_id`**。命名与 [sqlc_zero_prj](https://github.com/JNinng/sqlc_zero_prj) 的 `sqlcpg/rls.sql` 三件套保持同名同构。
 
 | 函数 | 返回 | 用途 |
 |------|------|------|
